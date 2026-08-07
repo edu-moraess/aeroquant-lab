@@ -47,6 +47,14 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# Compatibilidade com Poetry (Streamlit Cloud instala deps via Poetry).
+# package-mode = false: Poetry apenas gerencia dependências, sem empacotar
+# o projeto (o código vive em src/aeroquant, nome diferente do projeto).
+[tool.poetry]
+name = "aeroquant-lab"
+version = "0.3.0"
+package-mode = false
+
 [tool.ruff]
 line-length = 110
 target-version = "py312"
