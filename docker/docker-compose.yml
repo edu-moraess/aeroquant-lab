@@ -1,0 +1,30 @@
+# Orquestração local MVP. Serviços `api` e `dashboard` referenciam código
+# que existe em src/aeroquant/api/ e dashboards/, mas NÃO foi testado neste
+# ambiente (sem fastapi/streamlit instalados aqui — ver CONTRIBUTING.md).
+# Descomente conforme for validando cada um.
+version: "3.9"
+
+services:
+  core-tests:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: >
+      sh -c "python -m unittest discover tests/unit -v &&
+             python -m unittest discover tests/integration -v"
+
+  # api:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile
+  #   command: uvicorn aeroquant.api.main:app --host 0.0.0.0 --port 8000
+  #   ports:
+  #     - "8000:8000"
+
+  # dashboard:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile
+  #   command: streamlit run dashboards/streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+  #   ports:
+  #     - "8501:8501"

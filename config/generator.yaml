@@ -1,0 +1,18 @@
+# Parâmetros do StochasticSensorGenerator (Fase 4, Nível 1).
+# Correspondem 1:1 aos campos de DegradationParams (src/aeroquant/sensor_data/domain/value_objects.py).
+degradation:
+  noise_std: 0.015          # ruído de medição, fração do baseline
+  drift_rate: 0.0005        # deriva lenta de calibração do sensor
+  degradation_shape: 2.0    # shape do processo Gamma de degradação
+  degradation_scale: 0.01   # scale do processo Gamma de degradação
+
+faults:
+  abrupt_fault_rate: 0.001
+  abrupt_fault_magnitude: 0.5
+  intermittent_fault_prob: 0.01
+  intermittent_fault_magnitude: 0.10
+
+fleet:
+  lifetime_mean_cycles: 180
+  lifetime_std_cycles: 35
+  n_operating_conditions: 1  # ver docstring de build_cmapss_like_schema() — limitação documentada

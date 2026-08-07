@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant Sensor as Leitura de Sensor
+    participant DT as UpdateDigitalTwin
+    participant Baseline as OnlineFleetBaseline
+    participant HI as ZScoreHealthIndexEstimator
+    participant RUL as LinearExtrapolationRULEstimator
+    participant Repo as DigitalTwinRepository
+
+    Sensor->>DT: ingest(unit_id, cycle, condition, values)
+    alt cycle <= healthy_window_cycles
+        DT->>Baseline: update(condition, values)
+    end
+    DT->>Baseline: stats(condition)
+    Baseline-->>DT: {sensor: (mean, std)}
+    DT->>HI: estimate(values, stats)
+    HI-->>DT: (health_index, uncertainty)
+    DT->>Repo: load(unit_id)
+    Repo-->>DT: DigitalTwinState (histórico)
+    DT->>DT: detect_anomaly(histórico, health_index)
+    DT->>RUL: estimate(histórico + snapshot atual, failure_threshold)
+    RUL-->>DT: RULEstimate(point, lower, upper)
+    DT->>Repo: save(state atualizado)
+    DT-->>Sensor: DigitalTwinSnapshot

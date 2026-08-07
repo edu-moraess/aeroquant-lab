@@ -1,0 +1,4 @@
+-r base.txt
+mlflow>=2.10
+dvc>=3.0
+great-expectations>=0.18

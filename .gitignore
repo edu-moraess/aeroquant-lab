@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+outputs/
+synthetic_fleet.csv
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.csv
+!data/sample/*.csv
+.DS_Store

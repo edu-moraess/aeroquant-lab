@@ -1,0 +1,19 @@
+# Parâmetros do Digital Twin Context (Fase 5).
+health_index:
+  coupling_threshold: 0.2   # sensores com degradation_coupling abaixo disso são ignorados no HI
+
+baseline:
+  healthy_window_cycles: 20  # janela inicial de vida assumida-saudável (trava o baseline depois)
+
+rul_estimator:
+  min_points: 8
+  window: 40
+  confidence: 0.90
+
+anomaly_detection:
+  z_threshold: 3.0
+  min_history: 6
+
+failure_threshold_calibration:
+  n_calibration_units: 15
+  percentile: 50.0

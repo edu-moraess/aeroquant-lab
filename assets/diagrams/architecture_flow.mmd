@@ -1,0 +1,24 @@
+flowchart LR
+    subgraph Fontes
+        A1[Sensor Data Generator sintético]
+        A2[NASA C-MAPSS / PHM / UCI]
+    end
+
+    A1 --> B[Ingestion Service]
+    A2 --> B
+    B --> C[ETL + Quality Checks]
+    C --> D[(Feature Store)]
+    D --> E[Training Pipeline]
+    E -->|1. treino sintético| F[Modelo base]
+    F -->|2. fine-tuning| G[Modelo ajustado - dados públicos]
+    G -->|3. validação independente| H[MLflow Model Registry]
+    H --> I[Digital Twin Engine]
+    D -->|stream simulado| I
+    I --> J[Anomaly Detection]
+    I --> K[RUL Prediction]
+    J --> L[Explainability Layer]
+    K --> L
+    L --> M[Dashboard API]
+    M --> N[Frontend]
+    H -.monitoramento de drift.-> O[Drift Monitor]
+    O -.alerta.-> M
