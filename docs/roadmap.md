@@ -10,6 +10,12 @@ Fase 1 (núcleo = RUL + Digital Twin).
 - [x] Fase 3 — Engenharia de dados (ETL, qualidade)
 - [x] Fase 4, Nível 1 — Gerador sintético
 - [x] Fase 5 — Digital Twin com baseline estatístico (HI, RUL+incerteza, anomalia)
+- [x] Fase 6 — Machine Learning para RUL: 3 modelos scikit-learn (Linear
+      Regression, Random Forest, Gradient Boosting quantile) comparados
+      contra o baseline da Fase 5 nas mesmas unidades de teste.
+      `gradient_boosting_quantile` venceu (RMSE 22.3 vs. 155.8 do baseline).
+      Deep learning (LSTM/Transformer) NÃO implementado — sem rede para
+      instalar `torch` neste ambiente, ver item pendente abaixo.
 
 ## Bloqueado (depende de ação externa)
 
@@ -20,15 +26,18 @@ Fase 1 (núcleo = RUL + Digital Twin).
 
 ## Próximo (não bloqueado, pode começar já)
 
-- [ ] Fase 6 — Machine Learning para RUL (comparar contra o baseline da Fase 5)
-      - Ordem sugerida: (1) LSTM simples sobre dados sintéticos, comparar contra baseline; (2) só depois, se resultado justificar, arquiteturas mais complexas (Bi-LSTM+atenção)
-      - Decomposição de incerteza aleatória/epistêmica (H3) é parte natural desta fase
+- [ ] Deep learning para RUL (LSTM/Transformer) — bloqueado só por falta de
+      rede neste ambiente específico, não cientificamente. Rodar em
+      ambiente com `pip install torch` (ex.: Claude Code local).
+- [ ] Decomposição de incerteza aleatória/epistêmica de verdade (H3) — hoje
+      só temos incerteza por quantile regression (Gradient Boosting) e
+      variância de ensemble (Random Forest), nenhuma decomposição explícita.
 - [ ] Anomaly Detection como Bounded Context próprio (hoje é regra simples dentro do Digital Twin)
 
-## Depende da Fase 6
+## Depende de dados reais ou de mais maturidade
 
-- [ ] Fase 9 — Explainability (SHAP/Captum sobre os modelos da Fase 6)
-- [ ] Fase 12 — Validação científica formal (benchmark, ablação, robustez)
+- [ ] Fase 9 — Explainability (SHAP/Captum sobre os modelos da Fase 6 — os modelos já existem, isso pode começar)
+- [ ] Fase 12 — Validação científica formal (benchmark, ablação, robustez) — a comparação da Fase 6 é um primeiro passo, não a validação completa
 
 ## Independente, mas de menor prioridade dado o núcleo escolhido
 
