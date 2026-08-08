@@ -2,6 +2,21 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
+## [0.4.0] — Fase 6 (Machine Learning)
+
+### Adicionado
+- ML Context: `TrainAndCompareModels` (use case), 3 trainers scikit-learn (`LinearRegressionTrainer`, `RandomForestTrainer`, `GradientBoostingQuantileTrainer`), métricas (`RMSE`, `MAE`, NASA asymmetric score), split por unidade (`split_by_unit`) sem vazamento.
+- `GradientBoostingQuantileTrainer` produz intervalo de predição real (quantile loss, alpha 0.05/0.5/0.95) — primeira quantificação de incerteza aprendida do projeto (vs. o intervalo OLS do baseline).
+- Comparação final justa: os 3 modelos de ML avaliados nas MESMAS unidades de teste que o baseline da Fase 5, em modo streaming, mesma métrica. Resultado: `gradient_boosting_quantile` supera o baseline em RMSE por \~7x (22.3 vs. 155.8).
+- 11 novos testes (7 unit + 4 integration) — 24 no total no projeto.
+- PyTorch/deep learning (LSTM/Transformer, previstos na arquitetura da Fase 1) NÃO foram implementados — sem acesso à rede para instalar `torch` neste ambiente. Documentado como próximo passo, não fabricado.
+
+### Corrigido
+- **Violação de Clean Architecture própria**: `ml/domain/entities.py` importava de `ml/infrastructure/` (direção errada). Corrigido movendo `RULMetrics` para `domain/value_objects.py` — infrastructure agora importa de domain, não o contrário.
+- **Baseline da Fase 5 "explodindo" em extrapolação**: ao comparar contra ML pela primeira vez, ficou evidente que `LinearExtrapolationRULEstimator` podia projetar RUL de milhares de ciclos quando a inclinação da regressão local ficava muito pequena (mas positiva) — erro de inversão de regressão sem limite. Corrigido com um teto de extrapolação (3x os ciclos já observados da unidade). RMSE do baseline caiu de 3815 para 155.8 (ainda pior que ML, mas agora um número real, não uma explosão numérica).
+- **Overflow na métrica NASA**: `exp()` de um erro muito grande (antes da correção acima) virava `inf`, quebrando a comparação. Adicionado clipping de segurança em `nasa_asymmetric_score`.
+- **Teste com propriedade estatística boa demais para ser verdade**: `test_rul_uncertainty_shrinks_as_data_accumulates` assumia que a incerteza do baseline encolhe monotonicamente até o fim da vida. Achado real: perto do fim de vida, sensores de alto acoplamento saturam no teto do range a cada ciclo (Health Index fica momentaneamente achatado), a regressão local perde inclinação detectável, e o estimador cai — corretamente — no fallback "não extrapolar". O teste foi reescrito para comparar início vs. meio de vida (a propriedade real que importa).
+
 ## [0.3.0] — Fase 5 (Digital Twin)
 
 ### Adicionado
@@ -26,7 +41,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 - 9 testes de propriedade do gerador e do pipeline de ETL.
 
 ### Corrigido
-- **Saturação prematura de sensores**: o efeito de degradação escalava pelo baseline do sensor em vez do range válido (`valid_max - baseline`), fazendo sensores de alto acoplamento saturarem no teto do range aos ~15% da vida útil. Corrigido para escalar pelo headroom real.
+- **Saturação prematura de sensores**: o efeito de degradação escalava pelo baseline do sensor em vez do range válido (`valid_max - baseline`), fazendo sensores de alto acoplamento saturarem no teto do range aos \~15% da vida útil. Corrigido para escalar pelo headroom real.
 
 ## [0.1.0] — Fase 1 (Arquitetura) + Fase 2 (Pergunta Científica)
 
@@ -37,5 +52,4 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ## Pendente (não implementado — não fabricado como se existisse)
 - Fase 4, Níveis 2–3: ingestão real do C-MAPSS e treino híbrido (bloqueado por acesso à rede — arquivos precisam ser enviados manualmente).
-- Fase 6: modelos de Machine Learning para RUL/anomalia/classificação (o baseline estatístico da Fase 5 existe justamente para ser o piso de comparação).
 - Fases 7–13: Computer Vision, Simulação Monte Carlo, XAI, Dashboard de produção, MLOps completo (CI/CD real, MLflow, DVC), Validação Científica formal, Publicação.
