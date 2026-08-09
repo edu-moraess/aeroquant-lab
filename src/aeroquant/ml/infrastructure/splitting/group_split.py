@@ -23,7 +23,7 @@ def split_by_unit(
     n_test = max(1, int(len(shuffled) * test_fraction))
     test_units = set(shuffled[:n_test])
 
-    train_df = df[\~df["unit_id"].isin(test_units)].copy()
+    train_df = df[~df["unit_id"].isin(test_units)].copy()
     test_df = df[df["unit_id"].isin(test_units)].copy()
 
     # Invariante de sanidade: nenhuma unidade pode aparecer nos dois lados.
