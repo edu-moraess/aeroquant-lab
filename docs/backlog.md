@@ -9,9 +9,9 @@ que ficaram anotados durante o desenvolvimento das Fases 1–5.
       re-execuções (causou um falso-positivo de qualidade de dados durante
       o desenvolvimento — ver histórico de sessão). Adicionar opção de
       overwrite explícito ou detecção de re-execução.
-- [ ] `ZScoreHealthIndexEstimator.estimate` retorna uma incerteza fixa
-      (`0.15`) em vez de calculada — está marcado no próprio código como
-      candidato a refinamento na Fase 6.
+- [x] `ZScoreHealthIndexEstimator.estimate` — incerteza agora data-driven
+      (`0.15 / sqrt(n_min)` via `stats_with_n`) quando o baseline expõe n;
+      fallback 0.15 legado mantido (v0.4.1).
 - [ ] `CMAPSSAdapter._encode_operating_condition` é um placeholder (sempre
       retorna `0`) — precisa de clustering real (k-means, k=6) assim que
       houver arquivo C-MAPSS real para calibrar contra.
