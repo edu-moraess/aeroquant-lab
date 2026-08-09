@@ -1,30 +1,10 @@
 """
 Trainers concretos (infrastructure) implementando o port `ModelTrainer`.
 
-Por que estes três algoritmos, nesta ordem de complexidade crescente
-(exigência do master prompt: "sempre comparar diferentes algoritmos antes
-da escolha final"):
-
-1. **LinearRegression** — o baseline de ML mais simples possível. Se um
-   modelo mais complexo não superar isto, a complexidade extra não se
-   justifica. Serve de ponte entre o baseline estatístico da Fase 5
-   (extrapolação de HI) e modelos de fato "aprendidos" de features.
-2. **RandomForestRegressor** — captura não-linearidades e interações entre
-   sensores sem exigir escalonamento cuidadoso nem grande volume de dados
-   (importante aqui, onde só temos frota sintética + eventualmente uma
-   frota pequena de C-MAPSS). A variância entre árvores também dá uma
-   forma barata de incerteza epistêmica (usada em `predict_interval`).
-3. **GradientBoostingRegressor com quantile loss** — treinado 3 vezes
-   (alpha=0.05, 0.5, 0.95) para produzir um intervalo de predição real,
-   não decorativo, comparável ao intervalo OLS do baseline da Fase 5.
-   GBM com quantile loss foi escolhido em vez de um único modelo com
-   dropout/ensemble bootstrap porque scikit-learn oferece isso nativamente
-   e sem necessidade de tunar um ensemble manual.
-
-Deep learning (LSTM/Transformer, mencionados na arquitetura da Fase 1)
-FICOU DE FORA desta rodada — torch não está disponível neste container
-sem rede. Ver `docs/roadmap.md` para isso ser retomado assim que houver
-ambiente com acesso à internet.
+1. LinearRegression — baseline
+2. RandomForestRegressor — não-linearidades + incerteza via árvores
+3. GradientBoostingRegressor quantile — intervalo 5/50/95
+4. MLPRegressor — rede neural feed-forward leve (sem torch)
 """
 from __future__ import annotations
 
@@ -69,10 +49,6 @@ class RandomForestTrainer:
         return np.clip(model.predictor.predict(X[model.features_used]), 0, None)
 
     def predict_interval(self, model: TrainedModel, X: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-        # Incerteza epistêmica via dispersão entre as árvores do ensemble —
-        # cada árvore prevê separadamente, e usamos os percentis 5/95 da
-        # distribuição de previsões como intervalo (não é Bayesiano, mas é
-        # uma incerteza real derivada do modelo, não inventada).
         Xf = X[model.features_used]
         tree_preds = np.stack([tree.predict(Xf.to_numpy()) for tree in model.predictor.estimators_], axis=0)
         lower = np.clip(np.percentile(tree_preds, 5, axis=0), 0, None)
@@ -108,8 +84,59 @@ class GradientBoostingQuantileTrainer:
         Xf = X[model.features_used]
         lower = np.clip(model.predictor[0.05].predict(Xf), 0, None)
         upper = np.clip(model.predictor[0.95].predict(Xf), 0, None)
-        # Quantile regression treinada independentemente por alpha pode,
-        # raramente, produzir lower > upper numa amostra específica —
-        # corrigido aqui em vez de deixar propagar como intervalo inválido.
         lower, upper = np.minimum(lower, upper), np.maximum(lower, upper)
         return lower, upper
+
+
+class MLPTrainer:
+    """Rede neural feed-forward (MLP) via scikit-learn — baseline neural sem torch."""
+
+    def __init__(
+        self,
+        hidden_layer_sizes: tuple[int, ...] = (64, 32),
+        max_iter: int = 250,
+        alpha: float = 1e-4,
+        seed: int = 42,
+    ) -> None:
+        self._hidden = hidden_layer_sizes
+        self._max_iter = max_iter
+        self._alpha = alpha
+        self._seed = seed
+
+    def train(self, X: pd.DataFrame, y: pd.Series) -> TrainedModel:
+        from sklearn.neural_network import MLPRegressor
+        from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import StandardScaler
+
+        pipe = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "mlp",
+                    MLPRegressor(
+                        hidden_layer_sizes=self._hidden,
+                        max_iter=self._max_iter,
+                        alpha=self._alpha,
+                        early_stopping=True,
+                        validation_fraction=0.15,
+                        n_iter_no_change=15,
+                        random_state=self._seed,
+                        learning_rate_init=1e-3,
+                    ),
+                ),
+            ]
+        )
+        pipe.fit(X, y)
+        return TrainedModel(
+            name="mlp",
+            algorithm=f"MLP{list(self._hidden)}",
+            features_used=list(X.columns),
+            predictor=pipe,
+            supports_uncertainty=False,
+        )
+
+    def predict(self, model: TrainedModel, X: pd.DataFrame) -> np.ndarray:
+        return np.clip(model.predictor.predict(X[model.features_used]), 0, None)
+
+    def predict_interval(self, model: TrainedModel, X: pd.DataFrame) -> None:
+        return None
