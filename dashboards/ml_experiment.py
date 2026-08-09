@@ -1,8 +1,7 @@
 """
-Experimento leve de comparação ML (Fase 6) para o dashboard Streamlit.
+Experimento ML tabular — protocolo leakage-free.
 
-Gera frota sintética, treina Linear/RF/GBM quantile/MLP e devolve métricas +
-modelo treinado (para XAI). Split por unidade sem vazamento temporal.
+Split por unit_id; normalização fit só no treino; métricas estendidas + ranking NASA-first.
 """
 from __future__ import annotations
 
@@ -11,7 +10,9 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from aeroquant.ml.application.use_cases import TrainAndCompareModels
+from aeroquant.ml.infrastructure.evaluation.metrics import evaluate_extended
+from aeroquant.ml.infrastructure.evaluation.ranking import RankingPolicy
+from aeroquant.ml.infrastructure.evaluation.residuals import analyze_residuals
 from aeroquant.ml.infrastructure.splitting.group_split import split_by_unit
 from aeroquant.ml.infrastructure.trainers.sklearn_trainers import (
     GradientBoostingQuantileTrainer,
@@ -19,24 +20,26 @@ from aeroquant.ml.infrastructure.trainers.sklearn_trainers import (
     MLPTrainer,
     RandomForestTrainer,
 )
+from aeroquant.sensor_data.domain.entities import FaultMode, Unit
 from aeroquant.sensor_data.domain.value_objects import DegradationParams
 from aeroquant.sensor_data.etl.pipeline import (
     add_rul_labels,
+    apply_normalize,
     clean,
     engineer_features,
-    normalize,
+    fit_normalize_stats,
     readings_to_dataframe,
 )
 from aeroquant.sensor_data.infrastructure.cmapss_schema import build_cmapss_like_schema
 from aeroquant.sensor_data.infrastructure.generators.stochastic_generator import (
     StochasticSensorGenerator,
 )
-from aeroquant.sensor_data.domain.entities import FaultMode, Unit
 
 
 @dataclass
 class MLExperimentResult:
     metrics_table: pd.DataFrame
+    ranked_table: pd.DataFrame
     test_true: np.ndarray
     test_pred_best: np.ndarray
     best_model_name: str
@@ -47,6 +50,8 @@ class MLExperimentResult:
     trained_model: object | None = None
     X_test: pd.DataFrame | None = None
     feature_cols: list | None = None
+    residual_report: object | None = None
+    protocol_note: str = ""
 
 
 def run_ml_experiment(
@@ -57,7 +62,6 @@ def run_ml_experiment(
 ) -> MLExperimentResult:
     schema = build_cmapss_like_schema()
     generator = StochasticSensorGenerator()
-
     readings = []
     rng = np.random.default_rng(seed)
     for i in range(n_units):
@@ -69,78 +73,70 @@ def run_ml_experiment(
             fault_mode=FaultMode.ABRUPT if i % 4 == 0 else FaultMode.GRADUAL,
         )
         params = DegradationParams(
-            seed=seed + i,
-            noise_std=noise_std,
-            abrupt_fault_rate=0.005,
-            abrupt_fault_magnitude=0.5,
+            seed=seed + i, noise_std=noise_std, abrupt_fault_rate=0.005, abrupt_fault_magnitude=0.5,
         )
         readings.extend(generator.generate_unit(unit, schema, params))
 
     df = readings_to_dataframe(readings, schema)
     df = clean(df, schema)
-    df = normalize(df, schema)
-    df = engineer_features(df, schema, window=5)
     df = add_rul_labels(df, max_rul_cap=125)
-
-    feature_cols = [
-        c for c in df.columns if c.endswith("_z") or "_roll_" in c or "_delta_" in c
-    ]
     train_df, test_df = split_by_unit(df, test_fraction=0.3, seed=seed)
 
-    trainers = {
-        "linear_regression": LinearRegressionTrainer(),
-        "random_forest": RandomForestTrainer(n_estimators=n_estimators, max_depth=8),
-        "gradient_boosting_quantile": GradientBoostingQuantileTrainer(
-            n_estimators=n_estimators, max_depth=3
-        ),
-        "mlp": MLPTrainer(hidden_layer_sizes=(64, 32), max_iter=200, seed=seed),
-    }
-    result = TrainAndCompareModels(trainers).run(train_df, test_df, feature_cols)
+    stats = fit_normalize_stats(train_df, schema)
+    train_df = apply_normalize(train_df, schema, stats)
+    test_df = apply_normalize(test_df, schema, stats)
+    train_df = engineer_features(train_df, schema, window=5)
+    test_df = engineer_features(test_df, schema, window=5)
 
-    rows = []
-    for name, m in result.results.items():
-        rows.append(
-            {
-                "modelo": name,
-                "RMSE": round(m.rmse, 2),
-                "MAE": round(m.mae, 2),
-                "NASA score": f"{m.nasa_score:.3e}",
-                "n": m.n_samples,
-                "cobertura 90%": (
-                    f"{m.interval_coverage_90:.1%}"
-                    if m.interval_coverage_90 is not None
-                    else "—"
-                ),
-            }
-        )
-    metrics_table = pd.DataFrame(rows).sort_values("RMSE")
+    feature_cols = [c for c in train_df.columns if c.endswith("_z") or "_roll_" in c or "_delta_" in c]
+    feature_cols = [c for c in feature_cols if c in test_df.columns]
 
-    best_name = metrics_table.iloc[0]["modelo"]
-    best_trainer = trainers[best_name]
     X_train, y_train = train_df[feature_cols], train_df["rul"]
     X_test, y_test = test_df[feature_cols], test_df["rul"]
-    model = best_trainer.train(X_train, y_train)
-    y_pred = best_trainer.predict(model, X_test)
+    y_true = y_test.to_numpy(dtype=float)
+
+    trainers = {
+        "Linear Regression": LinearRegressionTrainer(),
+        "Random Forest": RandomForestTrainer(n_estimators=n_estimators, max_depth=8, seed=seed),
+        "GBM Quantile": GradientBoostingQuantileTrainer(n_estimators=n_estimators, max_depth=3),
+        "MLP": MLPTrainer(hidden_layer_sizes=(64, 32), max_iter=200, seed=seed),
+    }
+
+    rows, preds, models = [], {}, {}
+    for name, trainer in trainers.items():
+        model = trainer.train(X_train, y_train)
+        pred = np.clip(trainer.predict(model, X_test), 0, None)
+        preds[name] = pred
+        models[name] = model
+        rows.append(evaluate_extended(y_true, pred).to_row(name))
+
+    metrics_table = pd.DataFrame(rows)
+    ranked = RankingPolicy().rank(metrics_table)
+    best_name = str(ranked.iloc[0]["Model"])
+    y_pred = preds[best_name]
+    model = models[best_name]
 
     importance = None
-    if best_name == "random_forest":
+    if best_name == "Random Forest" and hasattr(model.predictor, "feature_importances_"):
         imp = model.predictor.feature_importances_
         importance = (
             pd.DataFrame({"feature": feature_cols, "importance": imp})
-            .sort_values("importance", ascending=False)
-            .head(15)
+            .sort_values("importance", ascending=False).head(15)
         )
-    elif best_name == "gradient_boosting_quantile":
-        imp = model.predictor[0.5].feature_importances_
-        importance = (
-            pd.DataFrame({"feature": feature_cols, "importance": imp})
-            .sort_values("importance", ascending=False)
-            .head(15)
-        )
+    elif best_name == "GBM Quantile":
+        try:
+            imp = model.predictor[0.5].feature_importances_
+            importance = (
+                pd.DataFrame({"feature": feature_cols, "importance": imp})
+                .sort_values("importance", ascending=False).head(15)
+            )
+        except Exception:
+            pass
 
     return MLExperimentResult(
         metrics_table=metrics_table,
-        test_true=y_test.to_numpy(),
+        ranked_table=ranked,
+        test_true=y_true,
         test_pred_best=y_pred,
         best_model_name=best_name,
         feature_importance=importance,
@@ -150,4 +146,6 @@ def run_ml_experiment(
         trained_model=model,
         X_test=X_test.copy(),
         feature_cols=list(feature_cols),
+        residual_report=analyze_residuals(y_true, y_pred),
+        protocol_note="Split por unit_id (30% test). Normalização fit só no treino. Ranking: NASA + 0.5·RMSE + 0.25·|Bias|.",
     )
