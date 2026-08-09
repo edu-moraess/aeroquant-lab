@@ -56,7 +56,11 @@ class UpdateDigitalTwin:
         #    contaminado pela própria degradação que está sendo medida).
         if cycle <= self._healthy_window_cycles:
             self._baseline.update(operating_condition, sensor_values)
-        stats = self._baseline.stats(operating_condition)
+        # Preferir stats_with_n quando disponível (incerteza do HI data-driven).
+        if hasattr(self._baseline, "stats_with_n"):
+            stats = self._baseline.stats_with_n(operating_condition)
+        else:
+            stats = self._baseline.stats(operating_condition)
 
         health_index, hi_uncertainty = self._hi_estimator.estimate(sensor_values, stats)
 
