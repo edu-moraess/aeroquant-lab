@@ -1,10 +1,8 @@
 """
 Experimento leve de comparação ML (Fase 6) para o dashboard Streamlit.
 
-Gera frota sintética pequena, treina os 3 modelos scikit-learn já existentes
-e devolve métricas + predições — cacheável por seed. Não substitui
-scripts/demo_ml_vs_baseline.py (comparação formal streaming); serve para
-exploração interativa no dashboard.
+Gera frota sintética, treina Linear/RF/GBM quantile e devolve métricas +
+modelo treinado (para XAI). Split por unidade sem vazamento temporal.
 """
 from __future__ import annotations
 
@@ -45,6 +43,9 @@ class MLExperimentResult:
     n_train_units: int
     n_test_units: int
     n_features: int
+    trained_model: object | None = None
+    X_test: pd.DataFrame | None = None
+    feature_cols: list | None = None
 
 
 def run_ml_experiment(
@@ -53,7 +54,6 @@ def run_ml_experiment(
     noise_std: float = 0.015,
     n_estimators: int = 80,
 ) -> MLExperimentResult:
-    """Treina e avalia os 3 modelos da Fase 6 em frota sintética."""
     schema = build_cmapss_like_schema()
     generator = StochasticSensorGenerator()
 
@@ -145,4 +145,7 @@ def run_ml_experiment(
         n_train_units=int(train_df["unit_id"].nunique()),
         n_test_units=int(test_df["unit_id"].nunique()),
         n_features=len(feature_cols),
+        trained_model=model,
+        X_test=X_test.copy(),
+        feature_cols=list(feature_cols),
     )
