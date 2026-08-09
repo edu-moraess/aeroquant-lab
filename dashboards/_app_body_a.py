@@ -1,7 +1,7 @@
 """
 AeroQuant Lab — Dashboard unificado.
 
-Abas: Digital Twin · Fleet · ML clássico · Neural Net · Anomalias · Monte Carlo
+Abas: Digital Twin · Fleet · ML clássico · Neural Net · Anomalias · Monte Carlo · Risk
 
     streamlit run dashboards/streamlit_app.py
 """
@@ -75,7 +75,7 @@ THEME = get_theme()
 apply_global_css(THEME)
 
 st.title("AeroQuant Lab")
-st.caption("Digital Twin · RUL · ML · Neural Net · Anomalias · Monte Carlo")
+st.caption("Digital Twin · RUL · ML · Neural Net · Anomalias · Monte Carlo · Risk")
 
 with st.sidebar:
     st.markdown("**Simulação**")
@@ -126,8 +126,8 @@ def _safe_float(x, default=float("nan")) -> float:
         return default
 
 
-tab_twin, tab_fleet, tab_ml, tab_nn, tab_anom, tab_mc = st.tabs(
-    ["Digital Twin", "Fleet", "ML clássico", "Neural Net", "Anomalias", "Monte Carlo"]
+tab_twin, tab_fleet, tab_ml, tab_nn, tab_anom, tab_mc, tab_risk = st.tabs(
+    ["Digital Twin", "Fleet", "ML clássico", "Neural Net", "Anomalias", "Monte Carlo", "Risk"]
 )
 
 with tab_twin:
