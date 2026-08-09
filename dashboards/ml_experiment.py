@@ -1,7 +1,7 @@
 """
 Experimento leve de comparação ML (Fase 6) para o dashboard Streamlit.
 
-Gera frota sintética, treina Linear/RF/GBM quantile e devolve métricas +
+Gera frota sintética, treina Linear/RF/GBM quantile/MLP e devolve métricas +
 modelo treinado (para XAI). Split por unidade sem vazamento temporal.
 """
 from __future__ import annotations
@@ -16,6 +16,7 @@ from aeroquant.ml.infrastructure.splitting.group_split import split_by_unit
 from aeroquant.ml.infrastructure.trainers.sklearn_trainers import (
     GradientBoostingQuantileTrainer,
     LinearRegressionTrainer,
+    MLPTrainer,
     RandomForestTrainer,
 )
 from aeroquant.sensor_data.domain.value_objects import DegradationParams
@@ -92,6 +93,7 @@ def run_ml_experiment(
         "gradient_boosting_quantile": GradientBoostingQuantileTrainer(
             n_estimators=n_estimators, max_depth=3
         ),
+        "mlp": MLPTrainer(hidden_layer_sizes=(64, 32), max_iter=200, seed=seed),
     }
     result = TrainAndCompareModels(trainers).run(train_df, test_df, feature_cols)
 
