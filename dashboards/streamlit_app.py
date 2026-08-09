@@ -1,7 +1,7 @@
 """
 AeroQuant Lab — Dashboard unificado.
 
-Abas: Digital Twin · Fleet · ML RUL · Monte Carlo · Docs
+Abas: Digital Twin · Fleet · ML clássico · Neural Net · Monte Carlo
 Tema: nativo do Streamlit (⋮ → Settings → Theme).
 
     streamlit run dashboards/streamlit_app.py
@@ -46,28 +46,19 @@ from aeroquant.sensor_data.infrastructure.generators.stochastic_generator import
 from aeroquant.uncertainty.monte_carlo_rul import run_monte_carlo_rul
 from aeroquant.xai.shap_explainer import explain_model
 from ml_experiment import run_ml_experiment
+from nn_experiment import run_nn_experiment
 from ui_theme import apply_global_css, get_theme, methodology_block, plotly_layout
 
-# Config do modebar local (evita ImportError em deploys parciais)
 PLOTLY_CONFIG = {
     "displayModeBar": True,
     "displaylogo": False,
     "responsive": True,
     "modeBarButtonsToRemove": [
-        "lasso2d",
-        "select2d",
-        "autoScale2d",
-        "hoverClosestCartesian",
-        "hoverCompareCartesian",
-        "toggleSpikelines",
-        "zoomIn2d",
-        "zoomOut2d",
+        "lasso2d", "select2d", "autoScale2d",
+        "hoverClosestCartesian", "hoverCompareCartesian",
+        "toggleSpikelines", "zoomIn2d", "zoomOut2d",
     ],
-    "toImageButtonOptions": {
-        "format": "png",
-        "filename": "aeroquant",
-        "scale": 2,
-    },
+    "toImageButtonOptions": {"format": "png", "filename": "aeroquant", "scale": 2},
 }
 
 REPO_URL = "https://github.com/edu-moraess/aeroquant-lab"
@@ -83,7 +74,7 @@ THEME = get_theme()
 apply_global_css(THEME)
 
 st.title("AeroQuant Lab")
-st.caption("Digital Twin · RUL · ML · Monte Carlo")
+st.caption("Digital Twin · RUL · ML · Neural Net · Monte Carlo")
 
 with st.sidebar:
     st.markdown("**Simulação**")
@@ -134,8 +125,8 @@ def _safe_float(x, default=float("nan")) -> float:
         return default
 
 
-tab_twin, tab_fleet, tab_ml, tab_mc, tab_docs = st.tabs(
-    ["Digital Twin", "Fleet", "ML RUL", "Monte Carlo", "Docs"]
+tab_twin, tab_fleet, tab_ml, tab_nn, tab_mc = st.tabs(
+    ["Digital Twin", "Fleet", "ML clássico", "Neural Net", "Monte Carlo"]
 )
 
 with tab_twin:
@@ -299,9 +290,9 @@ with tab_fleet:
 with tab_ml:
     methodology_block(
         info="Comparação de modelos de RUL em frota sintética.",
-        method="Linear, Random Forest e GBM Quantile. Split por unidade. RMSE, MAE, NASA score.",
+        method="Linear, Random Forest, GBM Quantile e MLP. Split por unidade. RMSE, MAE, NASA score.",
         interpretation="Menor RMSE = melhor ajuste. NASA penaliza superestimação. SHAP explica o modelo, não a física.",
-        limitations="Só dados sintéticos. LSTM não integrado.",
+        limitations="Só dados sintéticos. LSTM sequencial ainda não integrado.",
         label="Sobre este painel",
     )
     m1, m2, m3 = st.columns(3)
@@ -376,6 +367,66 @@ with tab_ml:
     else:
         st.info("Clique em **Treinar** para comparar modelos.")
 
+with tab_nn:
+    methodology_block(
+        info="Rede neural feed-forward (MLP) para RUL em frota sintética.",
+        method="MLPRegressor (scikit-learn) com StandardScaler, early stopping e validação interna. Split por unidade. Opcionalmente compara Linear e RF.",
+        interpretation="Curva de perda deve decrescer e estabilizar. Compare RMSE/MAE com baselines clássicos neste regime de dados sintéticos.",
+        limitations="Features tabulares (não sequência). LSTM/Transformer ainda não integrados. Dados sintéticos apenas.",
+        label="Sobre este painel",
+    )
+    n1, n2, n3, n4 = st.columns(4)
+    with n1:
+        nn_units = st.slider("Unidades", 12, 40, 24, 4, key="nn_u")
+    with n2:
+        nn_seed = st.number_input("Seed", value=2026, step=1, key="nn_s")
+    with n3:
+        nn_arch = st.selectbox("Arquitetura", options=["(32,)", "(64, 32)", "(128, 64)", "(64, 32, 16)"], index=1, key="nn_a")
+    with n4:
+        nn_iter = st.slider("Max iterações", 50, 400, 200, 25, key="nn_i")
+    compare_bl = st.checkbox("Comparar com Linear e RF", value=True, key="nn_cmp")
+    if st.button("Treinar MLP", type="primary", key="nn_btn"):
+        hidden = tuple(int(x.strip()) for x in nn_arch.strip("()").split(",") if x.strip())
+        with st.spinner("Treinando rede neural..."):
+            try:
+                st.session_state["nn_result"] = run_nn_experiment(
+                    n_units=int(nn_units), seed=int(nn_seed), noise_std=noise_std,
+                    hidden=hidden, max_iter=int(nn_iter), compare_baselines=bool(compare_bl),
+                )
+            except Exception as e:
+                st.error("Falha no treino da rede neural.")
+                st.caption(str(e))
+    if "nn_result" in st.session_state:
+        res = st.session_state["nn_result"]
+        st.caption(f"{res.architecture} · épocas {res.n_epochs} · treino {res.n_train_units} · teste {res.n_test_units} · features {res.n_features}")
+        st.dataframe(res.metrics_table, use_container_width=True, hide_index=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Predito × Verdadeiro (MLP)**")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=res.test_true, y=res.test_pred_mlp, mode="markers", marker=dict(size=5, opacity=0.45, color=THEME["SERIES_A"]), name="MLP"))
+            mx = float(max(res.test_true.max(), res.test_pred_mlp.max()))
+            fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode="lines", line=dict(color=THEME["SERIES_MUTED"], dash="dash"), name="Ideal"))
+            fig.update_layout(**plotly_layout(THEME, height=340, x_title="RUL verdadeiro", y_title="RUL previsto"))
+            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+        with c2:
+            st.markdown("**Curva de perda**")
+            if res.loss_curve:
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(y=res.loss_curve, mode="lines", line=dict(color=THEME["SERIES_B"], width=2), name="loss"))
+                fig.update_layout(**plotly_layout(THEME, height=340, x_title="Época", y_title="Loss", show_legend=False))
+                st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            else:
+                st.info("Curva de perda indisponível para esta execução.")
+        residual = res.test_pred_mlp - res.test_true
+        st.markdown("**Residual MLP**")
+        fig = go.Figure(go.Histogram(x=residual, nbinsx=36, marker_color=THEME["SERIES_D"]))
+        fig.add_vline(x=0, line_dash="dot", line_color=THEME["SERIES_MUTED"])
+        fig.update_layout(**plotly_layout(THEME, height=240, x_title="pred − true", show_legend=False))
+        st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+    else:
+        st.info("Configure a arquitetura e clique em **Treinar MLP**.")
+
 with tab_mc:
     methodology_block(
         info="Propagação de incerteza do RUL.",
@@ -432,33 +483,3 @@ with tab_mc:
             st.caption(f"Total {r.var_total:.1f} · Aleatória {r.var_aleatoric:.1f} ({100*r.var_aleatoric/tot:.0f}%) · Epistêmica {r.var_epistemic:.1f} ({100*r.var_epistemic/tot:.0f}%)")
     else:
         st.info("Configure e clique em **Executar**.")
-
-with tab_docs:
-    st.markdown("**AeroQuant Lab**")
-    st.markdown(
-        "Pesquisa em monitoramento de saúde de motores turbofan (C-MAPSS-like). "
-        "Núcleo: Digital Twin, RUL com incerteza, ML e Monte Carlo."
-    )
-    st.markdown("**Fases**")
-    st.dataframe(pd.DataFrame([
-        {"Fase": "1–5", "Conteúdo": "Arquitetura, dados sintéticos, Digital Twin"},
-        {"Fase": "6", "Conteúdo": "ML RUL (Linear, RF, GBM quantile)"},
-        {"Fase": "8", "Conteúdo": "Monte Carlo — incerteza aleatória/epistêmica"},
-        {"Fase": "9", "Conteúdo": "XAI (TreeSHAP)"},
-        {"Fase": "10", "Conteúdo": "Dashboard unificado"},
-    ]), use_container_width=True, hide_index=True)
-    st.markdown("**Arquitetura**")
-    st.markdown(
-        "- `sensor_data` — gerador, ETL, schema\n"
-        "- `digital_twin` — HI, RUL OLS, baseline Welford\n"
-        "- `ml` — trainers sklearn, split por unidade\n"
-        "- `uncertainty` — Monte Carlo\n"
-        "- `xai` — SHAP"
-    )
-    st.markdown("**Limitações**")
-    st.markdown(
-        "- C-MAPSS real ainda não carregado.\n"
-        "- Incerteza empírica (não Bayesiana formal).\n"
-        "- LSTM e Computer Vision ainda não integrados."
-    )
-    st.caption(f"[Repositório]({REPO_URL})")
