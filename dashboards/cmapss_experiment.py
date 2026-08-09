@@ -1,4 +1,4 @@
-"""Treino RUL com NASA C-MAPSS real (FD001–FD004)."""
+"""Treino RUL com NASA C-MAPSS real (FD001–FD004), inclusive multi-regime."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,7 +14,9 @@ from aeroquant.ml.infrastructure.trainers.sklearn_trainers import (
     LinearRegressionTrainer, MLPTrainer, RandomForestTrainer,
 )
 from aeroquant.sensor_data.etl.pipeline import apply_normalize, engineer_features, fit_normalize_stats
-from aeroquant.sensor_data.infrastructure.adapters.cmapss_adapter import CMAPSSAdapter
+from aeroquant.sensor_data.infrastructure.adapters.cmapss_adapter import (
+    CMAPSSAdapter, OperatingConditionEncoder,
+)
 from aeroquant.sensor_data.infrastructure.cmapss_schema import build_cmapss_like_schema
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -66,8 +68,13 @@ def run_cmapss_experiment(
 
     schema = build_cmapss_like_schema()
     adapter = CMAPSSAdapter()
-    train_df = adapter.to_dataframe(str(_EXTERNAL / f"train_{subset}.txt"), schema)
-    test_df = adapter.to_dataframe(str(_EXTERNAL / f"test_{subset}.txt"), schema)
+    n_regimes = 6 if subset in ("FD002", "FD004") else 1
+    op_enc = OperatingConditionEncoder(n_clusters=n_regimes, seed=seed)
+
+    train_raw = adapter.to_dataframe(str(_EXTERNAL / f"train_{subset}.txt"), schema)
+    op_enc.fit(train_raw)
+    train_df = adapter.to_dataframe(str(_EXTERNAL / f"train_{subset}.txt"), schema, op_encoder=op_enc)
+    test_df = adapter.to_dataframe(str(_EXTERNAL / f"test_{subset}.txt"), schema, op_encoder=op_enc)
     train_df = adapter.attach_train_rul(train_df, max_rul_cap=max_rul_cap)
     test_df = adapter.attach_test_rul(test_df, str(_EXTERNAL / f"RUL_{subset}.txt"), max_rul_cap=max_rul_cap)
 
@@ -108,8 +115,9 @@ def run_cmapss_experiment(
         n_test_units=int(test_df["unit_id"].nunique()),
         n_train_rows=len(train_df), n_test_rows=len(test_df), n_features=len(feature_cols),
         protocol_note=(
-            f"NASA C-MAPSS {subset}. Train=run-to-failure; Test=parcial + RUL file. "
-            "Normalize fit só no treino. Ranking NASA-first. "
+            f"NASA C-MAPSS {subset} ({n_regimes} regime(s)). "
+            "Train=run-to-failure; Test=parcial + RUL file. "
+            "Op-condition KMeans fit só no treino. Normalize fit só no treino. "
             "C-MAPSS é simulação NASA (benchmark), não telemetria comercial."
         ),
     )
