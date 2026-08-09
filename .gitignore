@@ -1,8 +1,11 @@
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.Python
 .venv/
-outputs/
-synthetic_fleet.csv
+venv/
+env/
+.env
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
@@ -10,3 +13,7 @@ synthetic_fleet.csv
 *.csv
 !data/sample/*.csv
 .DS_Store
+
+# C-MAPSS archives (txt datasets tracked or downloaded for training)
+data/external/CMAPSSData.zip
+data/external/Damage Propagation Modeling.pdf
