@@ -1,5 +1,5 @@
-# Sem tema customizado — usa o tema original do Streamlit
-# (menu ⋮ → Settings → Theme: Light / Dark / Use system setting)
+# Tema original do Streamlit (sem override).
+# Troca em ⋮ → Settings → Theme (Light / Dark / Use system setting).
 
 [server]
 headless = true

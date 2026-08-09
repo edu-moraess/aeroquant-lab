@@ -1,6 +1,7 @@
 """
 Helpers de UI. Tema visual = 100% nativo do Streamlit.
-Cores de série fixas (legíveis em Light e Dark).
+
+Não força cores de fundo/CSS. O usuário troca em ⋮ → Settings → Theme.
 """
 from __future__ import annotations
 
@@ -21,7 +22,37 @@ SERIES = {
 }
 
 
+def get_theme() -> dict[str, str]:
+    """Paleta de séries (sem forçar fundo da app)."""
+    return {
+        "SERIES_A": SERIES["A"],
+        "SERIES_B": SERIES["B"],
+        "SERIES_C": SERIES["C"],
+        "SERIES_D": SERIES["D"],
+        "SERIES_MUTED": SERIES["MUTED"],
+        "ERROR": SERIES["ERROR"],
+        "SUCCESS": SERIES["SUCCESS"],
+        "WARNING": SERIES["B"],
+        "FILL_ACCENT": SERIES["FILL"],
+        "FILL_WARN": SERIES["FILL_WARN"],
+        "TEXT_PRIMARY": "",
+        "TEXT_SECONDARY": SERIES["MUTED"],
+        "BACKGROUND": "rgba(0,0,0,0)",
+        "SURFACE": "rgba(0,0,0,0)",
+        "SURFACE_SECONDARY": "rgba(0,0,0,0)",
+        "BORDER": SERIES["MUTED"],
+        "GRID": SERIES["MUTED"],
+        "ACCENT": SERIES["A"],
+    }
+
+
+def apply_global_css(theme: dict[str, str] | None = None) -> None:
+    """No-op — preserva o tema original do Streamlit."""
+    return
+
+
 def plotly_layout(
+    theme: dict[str, str] | None = None,
     *,
     height: int = 340,
     title: str | None = None,
@@ -29,7 +60,7 @@ def plotly_layout(
     y_title: str | None = None,
     show_legend: bool = True,
 ) -> dict[str, Any]:
-    """Layout Plotly mínimo. Fundo transparente — o Streamlit aplica o tema."""
+    """Fundo transparente — Streamlit controla Light/Dark."""
     layout: dict[str, Any] = dict(
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
