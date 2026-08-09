@@ -2,7 +2,7 @@
 AeroQuant Lab — Dashboard unificado.
 
 Abas: Digital Twin · Fleet · ML RUL · Monte Carlo · Docs
-Tema: somente nativo do Streamlit (⋮ → Settings → Theme).
+Tema: nativo do Streamlit (⋮ → Settings → Theme).
 
     streamlit run dashboards/streamlit_app.py
 """
@@ -46,7 +46,7 @@ from aeroquant.sensor_data.infrastructure.generators.stochastic_generator import
 from aeroquant.uncertainty.monte_carlo_rul import run_monte_carlo_rul
 from aeroquant.xai.shap_explainer import explain_model
 from ml_experiment import run_ml_experiment
-from theme import apply_global_css, get_theme, methodology_block, plotly_layout
+from theme import PLOTLY_CONFIG, apply_global_css, get_theme, methodology_block, plotly_layout
 
 REPO_URL = "https://github.com/edu-moraess/aeroquant-lab"
 
@@ -64,7 +64,6 @@ st.title("AeroQuant Lab")
 st.caption("Digital Twin · RUL · ML · Monte Carlo")
 
 with st.sidebar:
-    st.caption("Tema: menu ⋮ → Settings → Theme")
     st.markdown("**Simulação**")
     max_cycles = st.slider("Vida útil (ciclos)", 60, 300, 170, 10)
     noise_std = st.slider("Ruído σ", 0.0, 0.05, 0.012, 0.001)
@@ -74,10 +73,11 @@ with st.sidebar:
     st.markdown("**Modelo**")
     coupling_threshold = st.slider("Acoplamento HI", 0.05, 0.5, 0.2, 0.05)
     confidence = st.select_slider(
-        "Confiança RUL",
+        "Confiança RUL (IC)",
         options=[0.80, 0.90, 0.95],
         value=0.90,
         format_func=lambda x: f"{int(x * 100)}%",
+        help="Nível do intervalo de predição OLS do RUL.",
     )
 
     st.markdown("**Frota**")
@@ -90,7 +90,7 @@ schema = build_cmapss_like_schema()
 generator = StochasticSensorGenerator()
 
 
-def _build_dt(coupling: float):
+def _build_dt(coupling: float, conf: float = 0.90):
     hi_estimator = ZScoreHealthIndexEstimator(schema, coupling_threshold=coupling)
     failure_threshold = calibrate_failure_threshold(
         schema, OnlineFleetBaseline(), hi_estimator
@@ -98,7 +98,7 @@ def _build_dt(coupling: float):
     dt = UpdateDigitalTwin(
         baseline_tracker=OnlineFleetBaseline(),
         hi_estimator=hi_estimator,
-        rul_estimator=LinearExtrapolationRULEstimator(),
+        rul_estimator=LinearExtrapolationRULEstimator(confidence=float(conf)),
         repository=InMemoryDigitalTwinRepository(),
     )
     return dt, failure_threshold
@@ -128,7 +128,7 @@ with tab_twin:
     unit = Unit(unit_id="dashboard-unit", fleet_id="f1", max_cycles=int(max_cycles), fault_mode=FaultMode.ABRUPT)
     params = DegradationParams(seed=int(seed), noise_std=noise_std, abrupt_fault_rate=abrupt_rate, abrupt_fault_magnitude=0.5)
     readings = generator.generate_unit(unit, schema, params)
-    dt, failure_threshold = _build_dt(coupling_threshold)
+    dt, failure_threshold = _build_dt(coupling_threshold, confidence)
 
     rows, last_snap = [], None
     for r in readings:
@@ -166,7 +166,7 @@ with tab_twin:
             fig.add_trace(go.Scatter(x=df["cycle"], y=df["rul_upper"], line=dict(width=0), showlegend=False, hoverinfo="skip"))
             fig.add_trace(go.Scatter(x=df["cycle"], y=df["rul_lower"], fill="tonexty", fillcolor=THEME["FILL_ACCENT"], name=f"IC {int(confidence * 100)}%", line=dict(width=0)))
             fig.update_layout(**plotly_layout(THEME, height=360, x_title="Ciclo", y_title="Ciclos restantes"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
         with col2:
             st.markdown("**Health Index**")
             anom = df[df["anomaly"]]
@@ -176,7 +176,7 @@ with tab_twin:
                 fig.add_trace(go.Scatter(x=anom["cycle"], y=anom["health_index"], mode="markers", name="Anomalia", marker=dict(color=THEME["ERROR"], size=8, symbol="x")))
             fig.add_hline(y=failure_threshold, line_dash="dash", line_color=THEME["SERIES_MUTED"], annotation_text="limiar", annotation_font_color=THEME["TEXT_SECONDARY"])
             fig.update_layout(**plotly_layout(THEME, height=360, x_title="Ciclo", y_title="HI"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
 
         c3, c4 = st.columns(2)
         with c3:
@@ -185,13 +185,13 @@ with tab_twin:
             fig.add_trace(go.Scatter(x=df["cycle"], y=df["residual"], mode="lines", line=dict(color=THEME["SERIES_D"], width=1.5)))
             fig.add_hline(y=0, line_dash="dot", line_color=THEME["SERIES_MUTED"])
             fig.update_layout(**plotly_layout(THEME, height=280, x_title="Ciclo", y_title="Ciclos", show_legend=False))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
         with c4:
             st.markdown("**Incerteza OLS**")
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=df["cycle"], y=df["uncertainty_half"], fill="tozeroy", fillcolor=THEME["FILL_ACCENT"], line=dict(color=THEME["SERIES_A"], width=1.5)))
             fig.update_layout(**plotly_layout(THEME, height=280, x_title="Ciclo", y_title="± ciclos", show_legend=False))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
 
         st.markdown("**Sensores**")
         default_sensors = [s.name for s in schema.sensors if s.degradation_coupling >= 0.3][:5]
@@ -203,7 +203,7 @@ with tab_twin:
                 vals = [r.values[name] for r in readings]
                 fig.add_trace(go.Scatter(x=df["cycle"], y=vals, name=f"{name} (κ={spec.degradation_coupling:.2f})", line=dict(width=1.3)))
             fig.update_layout(**plotly_layout(THEME, height=300, x_title="Ciclo", y_title="Valor"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
 
 with tab_fleet:
     methodology_block(
@@ -222,7 +222,8 @@ with tab_fleet:
         p = DegradationParams(seed=int(seed) + i, noise_std=noise_std, abrupt_fault_rate=abrupt_rate, abrupt_fault_magnitude=0.5)
         rdgs = generator.generate_unit(u, schema, p)
         dt = UpdateDigitalTwin(baseline_tracker=OnlineFleetBaseline(), hi_estimator=hi_estimator,
-                               rul_estimator=LinearExtrapolationRULEstimator(), repository=InMemoryDigitalTwinRepository())
+                               rul_estimator=LinearExtrapolationRULEstimator(confidence=float(confidence)),
+                               repository=InMemoryDigitalTwinRepository())
         last_hi = None
         for r in rdgs:
             snap = dt.ingest(u.unit_id, r.cycle, r.operating_condition, r.values, failure_threshold)
@@ -240,7 +241,7 @@ with tab_fleet:
         colorscale = [[0.0, THEME["SERIES_A"]], [0.45, THEME["SERIES_C"]], [0.65, THEME["WARNING"]], [0.85, THEME["SERIES_B"]], [1.0, THEME["ERROR"]]]
         fig = go.Figure(go.Heatmap(z=hm.values, x=hm.columns, y=hm.index, colorscale=colorscale, zmid=failure_threshold, colorbar=dict(title="HI", thickness=12)))
         fig.update_layout(**plotly_layout(THEME, height=380, title=f"Limiar ≈ {failure_threshold:.3f}", x_title="Ciclo", y_title="Unidade", show_legend=False))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
 
         c5, c6 = st.columns(2)
         with c5:
@@ -255,7 +256,7 @@ with tab_fleet:
                                color_discrete_map={"ABRUPT": THEME["ERROR"], "GRADUAL": THEME["SERIES_A"]})
             fig.add_vline(x=failure_threshold, line_dash="dash", line_color=THEME["SERIES_MUTED"])
             fig.update_layout(**plotly_layout(THEME, height=300, x_title="HI final", y_title="Contagem"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
 
         st.markdown("**Trajetória por modo**")
         fleet_df = fleet_df.merge(final_df[["unit_id", "fault_mode"]], on="unit_id", how="left")
@@ -271,7 +272,7 @@ with tab_fleet:
                                      fillcolor=THEME["FILL_WARN"] if mode == "ABRUPT" else THEME["FILL_ACCENT"], name=f"{mode} ±1σ", line=dict(width=0)))
         fig.add_hline(y=failure_threshold, line_dash="dash", line_color=THEME["SERIES_MUTED"])
         fig.update_layout(**plotly_layout(THEME, height=320, x_title="Ciclo", y_title="HI médio"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
 
 with tab_ml:
     methodology_block(
@@ -308,13 +309,13 @@ with tab_ml:
             mx = float(max(res.test_true.max(), res.test_pred_best.max()))
             fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode="lines", line=dict(color=THEME["SERIES_MUTED"], dash="dash"), name="Ideal"))
             fig.update_layout(**plotly_layout(THEME, height=340, x_title="RUL verdadeiro", y_title="RUL previsto"))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
         with cb:
             st.markdown("**Importância**")
             if res.feature_importance is not None:
                 fig = go.Figure(go.Bar(x=res.feature_importance["importance"][::-1], y=res.feature_importance["feature"][::-1], orientation="h", marker_color=THEME["SERIES_B"]))
                 fig.update_layout(**plotly_layout(THEME, height=340, x_title="Importância", show_legend=False))
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
             else:
                 st.info("Disponível para RF e GBM.")
         residual = res.test_pred_best - res.test_true
@@ -322,7 +323,7 @@ with tab_ml:
         fig = go.Figure(go.Histogram(x=residual, nbinsx=36, marker_color=THEME["SERIES_D"]))
         fig.add_vline(x=0, line_dash="dot", line_color=THEME["SERIES_MUTED"])
         fig.update_layout(**plotly_layout(THEME, height=240, x_title="pred − true", show_legend=False))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
         st.markdown("**SHAP**")
         if res.trained_model is not None and res.X_test is not None:
             if st.button("Calcular SHAP", key="shap_btn"):
@@ -339,13 +340,13 @@ with tab_ml:
                 with sx:
                     fig = go.Figure(go.Bar(x=exp.feature_importance["mean_abs_shap"][::-1], y=exp.feature_importance["feature"][::-1], orientation="h", marker_color=THEME["SERIES_C"]))
                     fig.update_layout(**plotly_layout(THEME, height=360, title="|SHAP| médio", x_title="mean |SHAP|", show_legend=False))
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
                 with sy:
                     if exp.local_shap is not None:
                         colors = [THEME["ERROR"] if v < 0 else THEME["SUCCESS"] for v in exp.local_shap["shap_value"][::-1]]
                         fig = go.Figure(go.Bar(x=exp.local_shap["shap_value"][::-1], y=exp.local_shap["feature"][::-1], orientation="h", marker_color=colors))
                         fig.update_layout(**plotly_layout(THEME, height=360, title="Local", x_title="SHAP", show_legend=False))
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
                     else:
                         st.info("Local requer TreeSHAP.")
         else:
@@ -398,13 +399,13 @@ with tab_mc:
                 fig.add_vline(x=r.true_rul_at_ref, line_dash="dash", line_color=THEME["ERROR"], annotation_text="verdadeiro", annotation_font_color=THEME["TEXT_SECONDARY"])
                 fig.add_vline(x=r.mean, line_dash="solid", line_color=THEME["SERIES_B"], annotation_text="média", annotation_font_color=THEME["TEXT_SECONDARY"])
                 fig.update_layout(**plotly_layout(THEME, height=320, x_title="RUL (ciclos)", show_legend=False))
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
             with xb:
                 st.markdown("**Variância**")
                 fig = go.Figure(go.Bar(x=["Total", "Aleatória", "Epistêmica"], y=[r.var_total, r.var_aleatoric, r.var_epistemic],
                                        marker_color=[THEME["SERIES_MUTED"], THEME["SERIES_A"], THEME["SERIES_B"]]))
                 fig.update_layout(**plotly_layout(THEME, height=320, y_title="Variância", show_legend=False))
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
             tot = max(r.var_total, 1e-12)
             st.caption(f"Total {r.var_total:.1f} · Aleatória {r.var_aleatoric:.1f} ({100*r.var_aleatoric/tot:.0f}%) · Epistêmica {r.var_epistemic:.1f} ({100*r.var_epistemic/tot:.0f}%)")
     else:
