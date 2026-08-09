@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Baixa NASA C-MAPSS para data/external/."""
+"""Baixa NASA C-MAPSS para data/external/ (~12 MB)."""
 from __future__ import annotations
 
 import zipfile
@@ -17,7 +17,7 @@ def main() -> None:
     if not (OUT / "train_FD001.txt").exists():
         print(f"Downloading {URL} ...")
         req = Request(URL, headers={"User-Agent": "AeroQuantLab/1.0"})
-        with urlopen(req, timeout=120) as resp:
+        with urlopen(req, timeout=180) as resp:
             zip_path.write_bytes(resp.read())
         print(f"Saved {zip_path} ({zip_path.stat().st_size / 1e6:.1f} MB)")
         with zipfile.ZipFile(zip_path, "r") as zf:
@@ -25,7 +25,12 @@ def main() -> None:
         print("Extracted to", OUT)
     else:
         print("train_FD001.txt already present — skip download")
-    for name in ("train_FD001.txt", "test_FD001.txt", "RUL_FD001.txt"):
+    for name in (
+        "train_FD001.txt", "test_FD001.txt", "RUL_FD001.txt",
+        "train_FD002.txt", "test_FD002.txt", "RUL_FD002.txt",
+        "train_FD003.txt", "test_FD003.txt", "RUL_FD003.txt",
+        "train_FD004.txt", "test_FD004.txt", "RUL_FD004.txt",
+    ):
         p = OUT / name
         print(f"  {name}: {'OK' if p.exists() else 'MISSING'}")
 

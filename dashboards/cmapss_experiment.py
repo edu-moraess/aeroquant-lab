@@ -45,6 +45,18 @@ class CMAPSSExperimentResult:
     X_test: object = None
 
 
+def ensure_cmapss_data() -> None:
+    """Garante C-MAPSS em data/external/ (baixa se necessário)."""
+    if (_EXTERNAL / "train_FD001.txt").exists():
+        return
+    import subprocess
+    import sys
+    script = _ROOT / "scripts" / "download_cmapss.py"
+    if not script.exists():
+        raise FileNotFoundError(f"Falta {script}")
+    subprocess.check_call([sys.executable, str(script)], cwd=str(_ROOT))
+
+
 def cmapss_available(subset: str = "FD001") -> bool:
     return (
         (_EXTERNAL / f"train_{subset}.txt").exists()
@@ -54,12 +66,17 @@ def cmapss_available(subset: str = "FD001") -> bool:
 
 
 def list_available_subsets() -> list[str]:
+    try:
+        ensure_cmapss_data()
+    except Exception:
+        pass
     return [s for s in ("FD001", "FD002", "FD003", "FD004") if cmapss_available(s)]
 
 
 def run_cmapss_experiment(
     subset: str = "FD001", max_rul_cap: int = 125, seed: int = 42, n_estimators: int = 100,
 ) -> CMAPSSExperimentResult:
+    ensure_cmapss_data()
     if not cmapss_available(subset):
         raise FileNotFoundError(
             f"Arquivos C-MAPSS {subset} não encontrados em {_EXTERNAL}. "
