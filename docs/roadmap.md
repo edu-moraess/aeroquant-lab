@@ -14,9 +14,8 @@ Fase 1 (núcleo = RUL + Digital Twin).
 - [x] Fase 8 — Monte Carlo RUL (decomposição empírica aleatória/epistêmica)
 - [x] Fase 9 — XAI (TreeSHAP sobre RF/GBM + explicação local/global no dashboard)
 - [x] Fase 10 — Dashboard unificado (Streamlit)
-- [x] MLP feed-forward para RUL
-- [x] Modelos sequenciais: janelas + Sequence MLP; LSTM (torch opcional)
-- [x] Anomaly Detection como Bounded Context (IF + residual z-score, aba Anomalias)
+- [x] MLP + Sequence MLP + LSTM (torch opcional)
+- [x] Anomaly Detection (Isolation Forest + residual z-score)
 
 ## Bloqueado (depende de ação externa)
 
