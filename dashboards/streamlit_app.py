@@ -46,7 +46,29 @@ from aeroquant.sensor_data.infrastructure.generators.stochastic_generator import
 from aeroquant.uncertainty.monte_carlo_rul import run_monte_carlo_rul
 from aeroquant.xai.shap_explainer import explain_model
 from ml_experiment import run_ml_experiment
-from theme import PLOTLY_CONFIG, apply_global_css, get_theme, methodology_block, plotly_layout
+from ui_theme import apply_global_css, get_theme, methodology_block, plotly_layout
+
+# Config do modebar local (evita ImportError em deploys parciais)
+PLOTLY_CONFIG = {
+    "displayModeBar": True,
+    "displaylogo": False,
+    "responsive": True,
+    "modeBarButtonsToRemove": [
+        "lasso2d",
+        "select2d",
+        "autoScale2d",
+        "hoverClosestCartesian",
+        "hoverCompareCartesian",
+        "toggleSpikelines",
+        "zoomIn2d",
+        "zoomOut2d",
+    ],
+    "toImageButtonOptions": {
+        "format": "png",
+        "filename": "aeroquant",
+        "scale": 2,
+    },
+}
 
 REPO_URL = "https://github.com/edu-moraess/aeroquant-lab"
 
