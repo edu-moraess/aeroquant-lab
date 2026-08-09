@@ -1,10 +1,10 @@
 [theme]
-# Base padrão. Alternância Light/Dark também via seletor na sidebar do app.
+# Tema padrão. Troca em ⋮ → Settings → Theme (Light / Dark / Use system).
 base = "dark"
 primaryColor = "#60A5FA"
-backgroundColor = "#0B1220"
-secondaryBackgroundColor = "#111827"
-textColor = "#E5E7EB"
+backgroundColor = "#0F172A"
+secondaryBackgroundColor = "#1E293B"
+textColor = "#F1F5F9"
 font = "sans serif"
 
 [server]
