@@ -1,11 +1,5 @@
-[theme]
-# Tema padrão. Troca em ⋮ → Settings → Theme (Light / Dark / Use system).
-base = "dark"
-primaryColor = "#60A5FA"
-backgroundColor = "#0F172A"
-secondaryBackgroundColor = "#1E293B"
-textColor = "#F1F5F9"
-font = "sans serif"
+# Sem tema customizado — usa o tema original do Streamlit
+# (menu ⋮ → Settings → Theme: Light / Dark / Use system setting)
 
 [server]
 headless = true
