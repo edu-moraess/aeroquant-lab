@@ -29,6 +29,7 @@ api = [
 ]
 dashboard = [
     "streamlit>=1.35",
+    "plotly>=5.0",
 ]
 mlops = [
     "mlflow>=2.10",
