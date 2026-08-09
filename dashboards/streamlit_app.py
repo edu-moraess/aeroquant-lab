@@ -1,8 +1,7 @@
 """
 AeroQuant Lab — Dashboard unificado.
 
-Abas: Digital Twin · Fleet · ML clássico · Neural Net · Monte Carlo
-Tema: nativo do Streamlit (⋮ → Settings → Theme).
+Abas: Digital Twin · Fleet · ML clássico · Neural Net · Anomalias · Monte Carlo
 
     streamlit run dashboards/streamlit_app.py
 """
@@ -45,6 +44,7 @@ from aeroquant.sensor_data.infrastructure.generators.stochastic_generator import
 )
 from aeroquant.uncertainty.monte_carlo_rul import run_monte_carlo_rul
 from aeroquant.xai.shap_explainer import explain_model
+from anomaly_experiment import run_anomaly_experiment
 from ml_experiment import run_ml_experiment
 from nn_experiment import run_nn_experiment
 from seq_experiment import run_seq_experiment
@@ -75,7 +75,7 @@ THEME = get_theme()
 apply_global_css(THEME)
 
 st.title("AeroQuant Lab")
-st.caption("Digital Twin · RUL · ML · Neural Net · Monte Carlo")
+st.caption("Digital Twin · RUL · ML · Neural Net · Anomalias · Monte Carlo")
 
 with st.sidebar:
     st.markdown("**Simulação**")
@@ -126,8 +126,8 @@ def _safe_float(x, default=float("nan")) -> float:
         return default
 
 
-tab_twin, tab_fleet, tab_ml, tab_nn, tab_mc = st.tabs(
-    ["Digital Twin", "Fleet", "ML clássico", "Neural Net", "Monte Carlo"]
+tab_twin, tab_fleet, tab_ml, tab_nn, tab_anom, tab_mc = st.tabs(
+    ["Digital Twin", "Fleet", "ML clássico", "Neural Net", "Anomalias", "Monte Carlo"]
 )
 
 with tab_twin:
@@ -293,7 +293,7 @@ with tab_ml:
         info="Comparação de modelos de RUL em frota sintética.",
         method="Linear, Random Forest, GBM Quantile e MLP. Split por unidade. RMSE, MAE, NASA score.",
         interpretation="Menor RMSE = melhor ajuste. NASA penaliza superestimação. SHAP explica o modelo, não a física.",
-        limitations="Só dados sintéticos. LSTM sequencial ainda não integrado nesta aba.",
+        limitations="Só dados sintéticos. Modelos sequenciais estão na aba Neural Net.",
         label="Sobre este painel",
     )
     m1, m2, m3 = st.columns(3)
@@ -511,6 +511,96 @@ with tab_nn:
             st.info(f"Configure e clique em **{label}**.")
             if mode == "LSTM":
                 st.caption("LSTM requer o pacote `torch`. Se falhar no Cloud, use Sequence MLP.")
+
+with tab_anom:
+    methodology_block(
+        info="Detecção de anomalias em trajetórias de sensores e Health Index.",
+        method="Isolation Forest: treinado nos primeiros ciclos (regime saudável). Residual z-score: salto de HI na janela local (família do Digital Twin).",
+        interpretation="Taxa e scores altos perto do fim de vida ou falhas abruptas são esperados. Compare com a flag dt_anomaly do Digital Twin.",
+        limitations="Sem ground-truth industrial. Contamination do IF é hiperparâmetro.",
+        label="Sobre este painel",
+    )
+
+    a1, a2, a3, a4 = st.columns(4)
+    with a1:
+        anom_method = st.selectbox(
+            "Método",
+            options=["isolation_forest", "residual_zscore"],
+            format_func=lambda x: "Isolation Forest" if x == "isolation_forest" else "Residual z-score",
+            key="anom_m",
+        )
+    with a2:
+        anom_units = st.slider("Unidades", 8, 32, 16, 2, key="anom_u")
+    with a3:
+        if anom_method == "isolation_forest":
+            anom_cont = st.slider("Contamination", 0.01, 0.15, 0.05, 0.01, key="anom_c")
+        else:
+            anom_z = st.slider("Limiar z", 2.0, 5.0, 3.0, 0.5, key="anom_z")
+    with a4:
+        anom_seed = st.number_input("Seed", value=42, step=1, key="anom_s")
+
+    if st.button("Detectar", type="primary", key="anom_btn"):
+        with st.spinner("Detectando anomalias..."):
+            try:
+                kwargs = dict(
+                    n_units=int(anom_units),
+                    seed=int(anom_seed),
+                    noise_std=noise_std,
+                    abrupt_rate=abrupt_rate,
+                    method=anom_method,
+                    coupling_threshold=coupling_threshold,
+                )
+                if anom_method == "isolation_forest":
+                    kwargs["contamination"] = float(anom_cont)
+                else:
+                    kwargs["z_threshold"] = float(anom_z)
+                st.session_state["anom_result"] = run_anomaly_experiment(**kwargs)
+            except Exception as e:
+                st.error("Falha na detecção de anomalias.")
+                st.caption(str(e))
+
+    if "anom_result" in st.session_state:
+        res = st.session_state["anom_result"]
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Amostras", res.n_samples)
+        k2.metric("Anomalias", res.n_anomalies)
+        k3.metric("Taxa", f"{100 * res.rate:.1f}%")
+        k4.metric("Limiar", f"{res.threshold:.3f}")
+        st.caption(f"Método: {res.method} · unidades: {res.n_units}")
+
+        st.markdown("**Por unidade**")
+        st.dataframe(res.by_unit, use_container_width=True, hide_index=True, height=260)
+
+        unit_opts = res.by_unit["unit_id"].tolist()
+        if unit_opts:
+            sel = st.selectbox("Unidade (timeline)", options=unit_opts, index=0, key="anom_unit")
+            sub = res.timeline[res.timeline["unit_id"] == sel].sort_values("cycle")
+            anom = sub[sub["is_anomaly"]]
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**Score de anomalia**")
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=sub["cycle"], y=sub["score"], mode="lines", name="score", line=dict(color=THEME["SERIES_A"], width=1.5)))
+                if len(anom):
+                    fig.add_trace(go.Scatter(x=anom["cycle"], y=anom["score"], mode="markers", name="anomalia", marker=dict(color=THEME["ERROR"], size=7, symbol="x")))
+                fig.add_hline(y=res.threshold, line_dash="dash", line_color=THEME["SERIES_MUTED"], annotation_text="limiar")
+                fig.update_layout(**plotly_layout(THEME, height=320, x_title="Ciclo", y_title="Score"))
+                st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            with c2:
+                st.markdown("**Health Index**")
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=sub["cycle"], y=sub["health_index"], mode="lines", name="HI", line=dict(color=THEME["SERIES_C"], width=2)))
+                if len(anom):
+                    fig.add_trace(go.Scatter(x=anom["cycle"], y=anom["health_index"], mode="markers", name="anomalia", marker=dict(color=THEME["ERROR"], size=7, symbol="x")))
+                fig.update_layout(**plotly_layout(THEME, height=320, x_title="Ciclo", y_title="HI"))
+                st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+
+            if "dt_anomaly" in sub.columns:
+                agree = int(((sub["is_anomaly"]) & (sub["dt_anomaly"].fillna(False))).sum())
+                st.caption(f"Concordância com flag do Digital Twin (mesma unidade): {agree} ciclos")
+    else:
+        st.info("Configure o método e clique em **Detectar**.")
 
 with tab_mc:
     methodology_block(
