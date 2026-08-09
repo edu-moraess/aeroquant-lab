@@ -1,11 +1,4 @@
-"""
-Trainers concretos (infrastructure) implementando o port `ModelTrainer`.
-
-1. LinearRegression — baseline
-2. RandomForestRegressor — não-linearidades + incerteza via árvores
-3. GradientBoostingRegressor quantile — intervalo 5/50/95
-4. MLPRegressor — rede neural feed-forward leve (sem torch)
-"""
+"""Trainers sklearn: Linear, RF, GBM quantile, MLP."""
 from __future__ import annotations
 
 import numpy as np
@@ -77,26 +70,19 @@ class GradientBoostingQuantileTrainer:
         )
 
     def predict(self, model: TrainedModel, X: pd.DataFrame) -> np.ndarray:
-        Xf = X[model.features_used]
-        return np.clip(model.predictor[0.5].predict(Xf), 0, None)
+        return np.clip(model.predictor[0.5].predict(X[model.features_used]), 0, None)
 
     def predict_interval(self, model: TrainedModel, X: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
         Xf = X[model.features_used]
         lower = np.clip(model.predictor[0.05].predict(Xf), 0, None)
         upper = np.clip(model.predictor[0.95].predict(Xf), 0, None)
-        lower, upper = np.minimum(lower, upper), np.maximum(lower, upper)
-        return lower, upper
+        return np.minimum(lower, upper), np.maximum(lower, upper)
 
 
 class MLPTrainer:
-    """Rede neural feed-forward (MLP) via scikit-learn — baseline neural sem torch."""
-
     def __init__(
-        self,
-        hidden_layer_sizes: tuple[int, ...] = (64, 32),
-        max_iter: int = 250,
-        alpha: float = 1e-4,
-        seed: int = 42,
+        self, hidden_layer_sizes: tuple[int, ...] = (64, 32), max_iter: int = 250,
+        alpha: float = 1e-4, seed: int = 42,
     ) -> None:
         self._hidden = hidden_layer_sizes
         self._max_iter = max_iter
@@ -108,31 +94,30 @@ class MLPTrainer:
         from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import StandardScaler
 
-        pipe = Pipeline(
-            [
-                ("scaler", StandardScaler()),
-                (
-                    "mlp",
-                    MLPRegressor(
-                        hidden_layer_sizes=self._hidden,
-                        max_iter=self._max_iter,
-                        alpha=self._alpha,
-                        early_stopping=True,
-                        validation_fraction=0.15,
-                        n_iter_no_change=15,
-                        random_state=self._seed,
-                        learning_rate_init=1e-3,
-                    ),
-                ),
-            ]
-        )
+        pipe = Pipeline([
+            ("scaler", StandardScaler()),
+            ("mlp", MLPRegressor(
+                hidden_layer_sizes=self._hidden, max_iter=self._max_iter, alpha=self._alpha,
+                early_stopping=True, validation_fraction=0.15, n_iter_no_change=15,
+                random_state=self._seed, learning_rate_init=1e-3,
+            )),
+        ])
         pipe.fit(X, y)
+        mlp = pipe.named_steps["mlp"]
+        meta = {
+            "loss_curve": list(getattr(mlp, "loss_curve_", []) or []),
+            "validation_scores": list(getattr(mlp, "validation_scores_", []) or []),
+            "n_iter": int(getattr(mlp, "n_iter_", 0) or 0),
+            "best_loss": float(getattr(mlp, "best_loss_", float("nan"))),
+            "n_layers": len(self._hidden),
+            "n_params_approx": int(sum(
+                a * b for a, b in zip([X.shape[1]] + list(self._hidden), list(self._hidden) + [1])
+            )),
+        }
+        pipe._aeroquant_meta = meta  # type: ignore[attr-defined]
         return TrainedModel(
-            name="mlp",
-            algorithm=f"MLP{list(self._hidden)}",
-            features_used=list(X.columns),
-            predictor=pipe,
-            supports_uncertainty=False,
+            name="mlp", algorithm=f"MLP{list(self._hidden)}", features_used=list(X.columns),
+            predictor=pipe, supports_uncertainty=False,
         )
 
     def predict(self, model: TrainedModel, X: pd.DataFrame) -> np.ndarray:
