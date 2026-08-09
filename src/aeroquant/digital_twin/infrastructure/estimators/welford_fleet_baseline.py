@@ -32,6 +32,7 @@ class OnlineFleetBaseline:
             self._state[key] = (n, mean, m2)
 
     def stats(self, operating_condition: int) -> dict[str, tuple[float, float]]:
+        """Retorna {sensor: (mean, std)} para compatibilidade com a interface atual."""
         out: dict[str, tuple[float, float]] = {}
         for (cond, sensor), (n, mean, m2) in self._state.items():
             if cond != operating_condition:
@@ -39,4 +40,15 @@ class OnlineFleetBaseline:
             variance = m2 / n if n > 1 else 0.0
             std = variance**0.5 if variance > 0 else 1e-6  # evita divisão por zero no z-score
             out[sensor] = (mean, std)
+        return out
+
+    def stats_with_n(self, operating_condition: int) -> dict[str, tuple[float, float, int]]:
+        """Retorna {sensor: (mean, std, n)} — n permite quantificar incerteza do baseline."""
+        out: dict[str, tuple[float, float, int]] = {}
+        for (cond, sensor), (n, mean, m2) in self._state.items():
+            if cond != operating_condition:
+                continue
+            variance = m2 / n if n > 1 else 0.0
+            std = variance**0.5 if variance > 0 else 1e-6
+            out[sensor] = (mean, std, n)
         return out
