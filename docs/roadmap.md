@@ -16,15 +16,16 @@ Fase 1 (núcleo = RUL + Digital Twin).
 - [x] Fase 10 — Dashboard unificado (Streamlit)
 - [x] MLP + Sequence MLP + LSTM (torch opcional)
 - [x] Anomaly Detection (Isolation Forest + residual z-score)
+- [x] Transformer encoder para RUL (torch opcional)
+- [x] CMAPSSAdapter estendido (to_dataframe, RUL train/test)
 
 ## Bloqueado (depende de ação externa)
 
-- [ ] Fase 4, Nível 2 — Ingestão de dados públicos C-MAPSS
+- [ ] Fase 4, Nível 2 — Arquivos C-MAPSS reais no ambiente
 - [ ] Fase 4, Nível 3 — Treino híbrido sintético→real
 
 ## Próximo
 
-- [ ] Transformer para RUL
 - [~] Decomposição de incerteza (H3) — parcial: HI data-driven, quantile ML, Monte Carlo
 - [ ] Fase 12 — Validação científica formal
 

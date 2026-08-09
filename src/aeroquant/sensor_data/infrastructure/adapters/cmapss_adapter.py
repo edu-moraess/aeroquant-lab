@@ -9,12 +9,7 @@ Formato conhecido do C-MAPSS (documentado pela NASA, sem cabeçalho):
   colunas 6-26    : sensor measurements 1-21
   separador       : espaço (possível espaço extra ao final de cada linha)
 
-NOTA IMPORTANTE: este adaptador ainda não foi testado contra um arquivo
-real, porque nenhum arquivo C-MAPSS foi enviado até este ponto do projeto
-(o container de desenvolvimento não tem acesso à internet para baixá-lo).
-A estrutura segue a documentação oficial do dataset; validar com
-`python -m aeroquant.sensor_data.infrastructure.adapters.cmapss_adapter
-<caminho_do_arquivo>` assim que o arquivo estiver disponível.
+NOTA: validar com arquivos reais quando disponíveis no ambiente.
 """
 from __future__ import annotations
 
@@ -50,6 +45,44 @@ class CMAPSSAdapter:
             )
         return readings
 
+    def to_dataframe(self, filepath: str, schema: SensorSchema) -> pd.DataFrame:
+        """Converte arquivo C-MAPSS em DataFrame compatível com o ETL do projeto."""
+        readings = self.parse(filepath, schema)
+        rows = []
+        for r in readings:
+            row = {
+                "unit_id": r.unit_id,
+                "cycle": r.cycle,
+                "operating_condition": r.operating_condition,
+            }
+            row.update(r.values)
+            rows.append(row)
+        return pd.DataFrame(rows)
+
+    @staticmethod
+    def attach_train_rul(df: pd.DataFrame, max_rul_cap: int = 125) -> pd.DataFrame:
+        """RUL piecewise para arquivos de treino (run-to-failure)."""
+        out = df.copy()
+        true_rul = out.groupby("unit_id")["cycle"].transform("max") - out["cycle"]
+        out["rul"] = true_rul.clip(upper=max_rul_cap)
+        return out
+
+    @staticmethod
+    def attach_test_rul(df: pd.DataFrame, rul_filepath: str, max_rul_cap: int = 125) -> pd.DataFrame:
+        """Anexa RUL_FD00X.txt (uma linha por unit, RUL no último ciclo observado)."""
+        rul_values = pd.read_csv(rul_filepath, sep=r"\s+", header=None, names=["rul_at_end"])
+        units = sorted(df["unit_id"].unique())
+        if len(units) != len(rul_values):
+            raise ValueError(
+                f"RUL file tem {len(rul_values)} linhas, dataset tem {len(units)} unidades."
+            )
+        mapping = {u: float(rul_values.iloc[i]["rul_at_end"]) for i, u in enumerate(units)}
+        out = df.copy()
+        max_cycle = out.groupby("unit_id")["cycle"].transform("max")
+        end_rul = out["unit_id"].map(mapping)
+        out["rul"] = (end_rul + (max_cycle - out["cycle"])).clip(upper=max_rul_cap)
+        return out
+
     @staticmethod
     def _read_raw(filepath: str) -> pd.DataFrame:
         columns = (
@@ -62,9 +95,5 @@ class CMAPSSAdapter:
 
     @staticmethod
     def _encode_operating_condition(row) -> int:
-        # Placeholder simples: nos subconjuntos FD002/FD004 existem 6 regimes
-        # operacionais discretos combináveis a partir de op_setting_1/2/3.
-        # Uma vez com dados reais em mãos, isso deve ser substituído por
-        # clustering (ex.: k-means com k=6) sobre (op_setting_1, op_setting_2,
-        # op_setting_3), como é prática padrão na literatura de C-MAPSS.
+        # Placeholder: FD002/FD004 usam 6 regimes; com dados reais, preferir k-means.
         return 0

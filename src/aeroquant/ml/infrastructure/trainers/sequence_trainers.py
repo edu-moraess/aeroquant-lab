@@ -3,6 +3,7 @@ Trainers sequenciais para RUL.
 
 - SequenceMLPTrainer: achata a janela (T×F) e treina MLP (sempre disponível).
 - LSTMTrainer: LSTM PyTorch se torch instalado; senão, erro explícito.
+- TransformerTrainer: encoder Transformer leve (torch opcional).
 """
 from __future__ import annotations
 
@@ -187,6 +188,130 @@ class LSTMTrainer:
         return SequenceModelResult(
             name="lstm",
             algorithm=f"LSTM(h={self._hidden},L={self._n_layers})",
+            y_pred=y_pred,
+            loss_curve=loss_curve,
+            n_epochs=self._epochs,
+            predictor=model,
+        )
+
+
+if HAS_TORCH:
+
+    class _TransformerNet(nn.Module):
+        """Encoder Transformer compacto para RUL (último token → head)."""
+
+        def __init__(
+            self,
+            n_features: int,
+            d_model: int = 64,
+            nhead: int = 4,
+            n_layers: int = 2,
+            dim_feedforward: int = 128,
+            dropout: float = 0.1,
+            max_len: int = 128,
+        ):
+            super().__init__()
+            self.input_proj = nn.Linear(n_features, d_model)
+            self.pos = nn.Parameter(torch.zeros(1, max_len, d_model))
+            layer = nn.TransformerEncoderLayer(
+                d_model=d_model,
+                nhead=nhead,
+                dim_feedforward=dim_feedforward,
+                dropout=dropout,
+                batch_first=True,
+                activation="gelu",
+            )
+            self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers)
+            self.head = nn.Sequential(
+                nn.Linear(d_model, d_model // 2),
+                nn.GELU(),
+                nn.Linear(d_model // 2, 1),
+            )
+
+        def forward(self, x):
+            t = x.size(1)
+            h = self.input_proj(x) + self.pos[:, :t, :]
+            h = self.encoder(h)
+            last = h[:, -1, :]
+            return self.head(last).squeeze(-1)
+
+
+class TransformerTrainer:
+    """Transformer encoder com PyTorch (opcional)."""
+
+    def __init__(
+        self,
+        d_model: int = 64,
+        nhead: int = 4,
+        n_layers: int = 2,
+        epochs: int = 30,
+        batch_size: int = 64,
+        lr: float = 1e-3,
+        seed: int = 42,
+    ) -> None:
+        self._d_model = d_model
+        self._nhead = nhead
+        self._n_layers = n_layers
+        self._epochs = epochs
+        self._batch_size = batch_size
+        self._lr = lr
+        self._seed = seed
+
+    def train_predict(
+        self, X_train: np.ndarray, y_train: np.ndarray, X_test: np.ndarray
+    ) -> SequenceModelResult:
+        if not HAS_TORCH:
+            raise RuntimeError(
+                "PyTorch não está instalado. Use Sequence MLP ou instale torch "
+                "(requirements/ml.txt). No Streamlit Cloud, prefira Sequence MLP."
+            )
+
+        torch.manual_seed(self._seed)
+        device = torch.device("cpu")
+        n_features = X_train.shape[-1]
+        seq_len = X_train.shape[1]
+
+        model = _TransformerNet(
+            n_features=n_features,
+            d_model=self._d_model,
+            nhead=self._nhead,
+            n_layers=self._n_layers,
+            max_len=max(seq_len, 8),
+        ).to(device)
+        opt = torch.optim.Adam(model.parameters(), lr=self._lr)
+        loss_fn = nn.MSELoss()
+
+        xt = torch.tensor(X_train, dtype=torch.float32)
+        yt = torch.tensor(y_train, dtype=torch.float32)
+        loader = DataLoader(
+            TensorDataset(xt, yt),
+            batch_size=min(self._batch_size, max(1, len(xt))),
+            shuffle=True,
+        )
+
+        loss_curve: list[float] = []
+        model.train()
+        for _ in range(self._epochs):
+            total, n = 0.0, 0
+            for xb, yb in loader:
+                xb, yb = xb.to(device), yb.to(device)
+                opt.zero_grad()
+                pred = model(xb)
+                loss = loss_fn(pred, yb)
+                loss.backward()
+                opt.step()
+                total += float(loss.item()) * len(xb)
+                n += len(xb)
+            loss_curve.append(total / max(n, 1))
+
+        model.eval()
+        with torch.no_grad():
+            y_pred = model(torch.tensor(X_test, dtype=torch.float32).to(device)).cpu().numpy()
+        y_pred = np.clip(y_pred, 0, None)
+
+        return SequenceModelResult(
+            name="transformer",
+            algorithm=f"Transformer(d={self._d_model},L={self._n_layers},H={self._nhead})",
             y_pred=y_pred,
             loss_curve=loss_curve,
             n_epochs=self._epochs,

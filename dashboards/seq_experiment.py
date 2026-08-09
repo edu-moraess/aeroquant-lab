@@ -4,6 +4,7 @@ Experimento sequencial (janelas temporais) para RUL.
 Modelos:
 - sequence_mlp: flatten da janela + MLP (sempre disponível)
 - lstm: PyTorch LSTM (se torch instalado)
+- transformer: encoder Transformer (se torch instalado)
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from aeroquant.ml.infrastructure.trainers.sequence_trainers import (
     HAS_TORCH,
     LSTMTrainer,
     SequenceMLPTrainer,
+    TransformerTrainer,
 )
 from aeroquant.sensor_data.domain.entities import FaultMode, Unit
 from aeroquant.sensor_data.domain.value_objects import DegradationParams
@@ -101,6 +103,9 @@ def run_seq_experiment(
 
     if model == "lstm":
         trainer = LSTMTrainer(hidden=lstm_hidden, epochs=lstm_epochs, seed=seed)
+        result = trainer.train_predict(train.X, train.y, test.X)
+    elif model == "transformer":
+        trainer = TransformerTrainer(epochs=lstm_epochs, seed=seed)
         result = trainer.train_predict(train.X, train.y, test.X)
     else:
         trainer = SequenceMLPTrainer(hidden_layer_sizes=hidden, max_iter=max_iter, seed=seed)
