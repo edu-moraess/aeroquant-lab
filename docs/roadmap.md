@@ -29,9 +29,7 @@ Fase 1 (núcleo = RUL + Digital Twin).
 - [ ] Deep learning para RUL (LSTM/Transformer) — bloqueado só por falta de
       rede neste ambiente específico, não cientificamente. Rodar em
       ambiente com `pip install torch` (ex.: Claude Code local).
-- [ ] Decomposição de incerteza aleatória/epistêmica de verdade (H3) — hoje
-      só temos incerteza por quantile regression (Gradient Boosting) e
-      variância de ensemble (Random Forest), nenhuma decomposição explícita.
+- [~] Decomposição de incerteza aleatória/epistêmica (H3) — progresso: HI uncertainty agora encolhe com n do baseline Welford; quantile/ensemble já existiam na Fase 6. Falta decomposição explícita aleatória vs epistêmica.
 - [ ] Anomaly Detection como Bounded Context próprio (hoje é regra simples dentro do Digital Twin)
 
 ## Depende de dados reais ou de mais maturidade
@@ -43,7 +41,7 @@ Fase 1 (núcleo = RUL + Digital Twin).
 
 - [ ] Fase 7 — Computer Vision (bloqueada cientificamente por falta de dataset real licenciado — ver Fase 1, seção 1.3)
 - [ ] Fase 8 — Simulação Monte Carlo
-- [ ] Fase 10 — Dashboard de produção (hoje existe um esqueleto Streamlit não testado)
+- [x] Fase 10 — Dashboard (Streamlit + Plotly, residual, incerteza, fleet heatmap) — atualizado 2026-08-09
 - [ ] Fase 11 — MLOps completo (CI existe; MLflow/DVC não integrados)
 
 ## Final
