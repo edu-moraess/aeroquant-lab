@@ -2,6 +2,17 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
+## [0.4.1] — Digital Twin: incerteza do HI data-driven + Dashboard Fase 10
+
+### Adicionado
+- `OnlineFleetBaseline.stats_with_n()` — expõe o contador Welford `n` por sensor/condição.
+- `ZScoreHealthIndexEstimator` passa a reduzir a incerteza do Health Index com a evidência do baseline (`0.15 / sqrt(n_min)`, floor 0.02) quando `n` está disponível; mantém 0.15 fixo em modo legado (compatibilidade).
+- `UpdateDigitalTwin` prefere `stats_with_n` via duck-typing.
+- Dashboard Streamlit (Fase 10): `requirements.txt` na raiz (corrige plotly no Cloud), residual RUL, evolução da incerteza OLS, heatmap de frota, trajetórias por modo de falha, ranking e histograma.
+
+### Motivação científica
+- Aproxima a hipótese H3 (decomposição de incerteza) sem exigir modelo bayesiano completo: a incerteza do HI deixa de ser constante arbitrária e passa a refletir quanta evidência o baseline da frota já acumulou.
+
 ## [0.4.0] — Fase 6 (Machine Learning)
 
 ### Adicionado
