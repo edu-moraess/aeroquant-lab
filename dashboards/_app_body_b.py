@@ -1,34 +1,64 @@
 
 with tab_ml:
+    from cmapss_experiment import list_available_subsets, run_cmapss_experiment
+
     methodology_block(
-        info="Comparação de modelos de RUL em frota sintética.",
-        method="Linear, RF, GBM Quantile e MLP. Split por unit_id. Normalização fit só no treino. Ranking NASA-first.",
-        interpretation="Menor NASA Score + RMSE = melhor sob ranking configurável. Bias > 0 = superestima RUL.",
-        limitations="Só dados sintéticos. Modelos sequenciais na aba Neural Net.",
+        info="Comparação de modelos de RUL — sintético ou NASA C-MAPSS real.",
+        method="Linear, RF, MLP. Split oficial C-MAPSS ou split por unit_id no sintético. Normalize fit só no treino.",
+        interpretation="Ranking NASA-first. C-MAPSS é benchmark NASA (simulação), não telemetria comercial.",
+        limitations="C-MAPSS requer arquivos em data/external/ (python scripts/download_cmapss.py).",
         label="Sobre este painel",
     )
+    data_src = st.radio("Fonte de dados", options=["Sintético", "C-MAPSS real"], horizontal=True, key="ml_data_src")
     m1, m2, m3 = st.columns(3)
-    with m1:
-        ml_units = st.slider("Unidades", 12, 48, 24, 4, key="ml_u")
-    with m2:
-        ml_seed = st.number_input("Seed", value=2026, step=1, key="ml_s")
-    with m3:
-        ml_trees = st.slider("Árvores", 30, 120, 60, 10, key="ml_t")
-    if st.button("Treinar", type="primary", key="ml_btn"):
+    if data_src == "C-MAPSS real":
+        avail = list_available_subsets()
+        with m1:
+            subset = st.selectbox("Subset", options=avail or ["FD001"], key="ml_fd")
+        with m2:
+            ml_seed = st.number_input("Seed", value=42, step=1, key="ml_s")
+        with m3:
+            ml_trees = st.slider("Árvores", 30, 150, 80, 10, key="ml_t")
+        if not avail:
+            st.warning("Arquivos C-MAPSS não encontrados. Rode: `python scripts/download_cmapss.py`")
+        btn_label = "Treinar C-MAPSS"
+    else:
+        with m1:
+            ml_units = st.slider("Unidades", 12, 48, 24, 4, key="ml_u")
+        with m2:
+            ml_seed = st.number_input("Seed", value=2026, step=1, key="ml_s")
+        with m3:
+            ml_trees = st.slider("Árvores", 30, 120, 60, 10, key="ml_t")
+        btn_label = "Treinar"
+        subset = None
+
+    if st.button(btn_label, type="primary", key="ml_btn"):
         with st.spinner("Treinando..."):
             try:
-                st.session_state["ml_result"] = run_ml_experiment(n_units=int(ml_units), seed=int(ml_seed), noise_std=noise_std, n_estimators=int(ml_trees))
+                if data_src == "C-MAPSS real":
+                    st.session_state["ml_result"] = run_cmapss_experiment(
+                        subset=str(subset), seed=int(ml_seed), n_estimators=int(ml_trees)
+                    )
+                else:
+                    st.session_state["ml_result"] = run_ml_experiment(
+                        n_units=int(ml_units), seed=int(ml_seed), noise_std=noise_std, n_estimators=int(ml_trees)
+                    )
                 st.session_state.pop("shap_exp", None)
             except Exception as e:
                 st.error("Falha no treino.")
                 st.caption(str(e))
+
     if "ml_result" in st.session_state:
         res = st.session_state["ml_result"]
-        st.caption(f"Treino {res.n_train_units} · Teste {res.n_test_units} · Features {res.n_features} · Melhor: {res.best_model_name}")
+        src_label = getattr(res, "subset", None) or getattr(res, "data_source", "synthetic")
+        st.caption(f"{src_label} · Treino {res.n_train_units} · Teste {res.n_test_units} · Features {res.n_features} · Melhor: {res.best_model_name}")
         table = getattr(res, "ranked_table", None)
         st.dataframe(table if table is not None else res.metrics_table, use_container_width=True, hide_index=True)
         if getattr(res, "protocol_note", None):
             st.caption(res.protocol_note)
+        if getattr(res, "bucket_table", None) is not None:
+            st.markdown("**Desempenho por faixa de RUL**")
+            st.dataframe(res.bucket_table, use_container_width=True, hide_index=True)
         ca, cb = st.columns(2)
         with ca:
             st.markdown("**Predicted vs Actual RUL**")
@@ -40,12 +70,12 @@ with tab_ml:
             st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
         with cb:
             st.markdown("**Importância**")
-            if res.feature_importance is not None:
+            if getattr(res, "feature_importance", None) is not None:
                 fig = go.Figure(go.Bar(x=res.feature_importance["importance"][::-1], y=res.feature_importance["feature"][::-1], orientation="h", marker_color=THEME["SERIES_B"]))
                 fig.update_layout(**plotly_layout(THEME, height=340, x_title="Importância", show_legend=False))
                 st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
             else:
-                st.info("Disponível para RF e GBM.")
+                st.info("Disponível no modo sintético (RF/GBM).")
         residual = res.test_pred_best - res.test_true
         if getattr(res, "residual_report", None) is not None:
             st.info(res.residual_report.bias_message)
@@ -76,39 +106,27 @@ with tab_ml:
             fig.update_layout(**plotly_layout(THEME, height=260, title="Absolute Error vs True RUL", x_title="True RUL", y_title="|error|", show_legend=False))
             st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
         st.markdown("**SHAP**")
-        if res.trained_model is not None and res.X_test is not None:
+        if getattr(res, "trained_model", None) is not None and getattr(res, "X_test", None) is not None:
             if st.button("Calcular SHAP", key="shap_btn"):
                 with st.spinner("SHAP..."):
                     try:
                         st.session_state["shap_exp"] = explain_model(res.trained_model, res.X_test, max_samples=min(150, len(res.X_test)), local_index=0)
                     except Exception as e:
-                        st.error("SHAP indisponível para este modelo.")
-                        st.caption(str(e))
+                        st.error("SHAP indisponível."); st.caption(str(e))
             if "shap_exp" in st.session_state:
                 exp = st.session_state["shap_exp"]
-                st.caption(f"{exp.method} · n={exp.n_samples_explained} · base={exp.base_value:.2f}")
-                sx, sy = st.columns(2)
-                with sx:
-                    fig = go.Figure(go.Bar(x=exp.feature_importance["mean_abs_shap"][::-1], y=exp.feature_importance["feature"][::-1], orientation="h", marker_color=THEME["SERIES_C"]))
-                    fig.update_layout(**plotly_layout(THEME, height=360, title="|SHAP| médio", x_title="mean |SHAP|", show_legend=False))
-                    st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
-                with sy:
-                    if exp.local_shap is not None:
-                        colors = [THEME["ERROR"] if v < 0 else THEME["SUCCESS"] for v in exp.local_shap["shap_value"][::-1]]
-                        fig = go.Figure(go.Bar(x=exp.local_shap["shap_value"][::-1], y=exp.local_shap["feature"][::-1], orientation="h", marker_color=colors))
-                        fig.update_layout(**plotly_layout(THEME, height=360, title="Local", x_title="SHAP", show_legend=False))
-                        st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+                st.caption(f"{exp.method} · n={exp.n_samples_explained}")
         else:
-            st.caption("Treine um modelo para habilitar SHAP.")
+            st.caption("SHAP disponível no modo sintético com modelo treinado.")
     else:
-        st.info("Clique em **Treinar** para comparar modelos.")
+        st.info("Escolha a fonte e clique em treinar.")
 
 with tab_nn:
     methodology_block(
         info="Redes neurais para RUL: MLP tabular e modelos sequenciais.",
-        method="MLP tabular / Sequence MLP / LSTM / Transformer. Split por unidade. Sequence length = últimos T ciclos.",
-        interpretation="Sequence Length = 30 significa os últimos 30 ciclos para estimar o RUL atual.",
-        limitations="Dados sintéticos. LSTM/Transformer exigem torch.",
+        method="MLP / Sequence MLP / LSTM / Transformer. Sequence length = últimos T ciclos.",
+        interpretation="Sequence Length = 30 → últimos 30 ciclos para o RUL atual.",
+        limitations="Por padrão ainda sintético. LSTM/Transformer exigem torch.",
         label="Sobre este painel",
     )
     mode = st.radio("Modo", options=["MLP tabular", "Sequence MLP", "LSTM", "Transformer"], horizontal=True, key="nn_mode")
@@ -126,26 +144,19 @@ with tab_nn:
                     st.session_state["nn_result"] = run_nn_experiment(n_units=int(nn_units), seed=int(nn_seed), noise_std=noise_std, hidden=hidden, max_iter=int(nn_iter), compare_baselines=bool(compare_bl))
                     st.session_state.pop("seq_result", None)
                 except Exception as e:
-                    st.error("Falha no treino."); st.caption(str(e))
+                    st.error("Falha."); st.caption(str(e))
         if "nn_result" in st.session_state:
             res = st.session_state["nn_result"]
-            st.caption(f"{res.architecture} · épocas {res.n_epochs} · treino {res.n_train_units} · teste {res.n_test_units}")
+            st.caption(f"{res.architecture} · épocas {res.n_epochs}")
             st.dataframe(res.metrics_table, use_container_width=True, hide_index=True)
-            c1, c2 = st.columns(2)
-            with c1:
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=res.test_true, y=res.test_pred_mlp, mode="markers", marker=dict(size=5, opacity=0.45, color=THEME["SERIES_A"])))
-                mx = float(max(res.test_true.max(), res.test_pred_mlp.max()))
-                fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode="lines", line=dict(color=THEME["SERIES_MUTED"], dash="dash")))
-                fig.update_layout(**plotly_layout(THEME, height=340, x_title="True RUL", y_title="Predicted RUL", show_legend=False))
-                st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
-            with c2:
-                if res.loss_curve:
-                    fig = go.Figure(go.Scatter(y=res.loss_curve, mode="lines", line=dict(color=THEME["SERIES_B"], width=2)))
-                    fig.update_layout(**plotly_layout(THEME, height=340, x_title="Época", y_title="Loss", show_legend=False))
-                    st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=res.test_true, y=res.test_pred_mlp, mode="markers", marker=dict(size=5, opacity=0.45, color=THEME["SERIES_A"])))
+            mx = float(max(res.test_true.max(), res.test_pred_mlp.max()))
+            fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode="lines", line=dict(color=THEME["SERIES_MUTED"], dash="dash")))
+            fig.update_layout(**plotly_layout(THEME, height=340, x_title="True RUL", y_title="Predicted RUL", show_legend=False))
+            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
         else:
-            st.info("Configure e clique em **Treinar MLP**.")
+            st.info("Configure e treine o MLP.")
     else:
         s1, s2, s3, s4 = st.columns(4)
         with s1: seq_units = st.slider("Unidades", 12, 36, 20, 4, key="seq_u")
@@ -165,10 +176,10 @@ with tab_nn:
                     st.session_state["seq_result"] = run_seq_experiment(**kwargs)
                     st.session_state.pop("nn_result", None)
                 except Exception as e:
-                    st.error("Falha no treino sequencial."); st.caption(str(e))
+                    st.error("Falha."); st.caption(str(e))
         if "seq_result" in st.session_state:
             res = st.session_state["seq_result"]
-            st.caption(f"{res.algorithm} · T={res.seq_len} · janelas {res.n_train_windows}/{res.n_test_windows}")
+            st.caption(f"{res.algorithm} · T={res.seq_len}")
             st.dataframe(res.metrics_table, use_container_width=True, hide_index=True)
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=res.test_true, y=res.test_pred, mode="markers", marker=dict(size=5, opacity=0.45, color=THEME["SERIES_A"])))
@@ -180,16 +191,9 @@ with tab_nn:
             st.info(f"Configure e clique em **{label}**.")
 
 with tab_anom:
-    methodology_block(
-        info="Detecção de anomalias em sensores e Health Index.",
-        method="Isolation Forest (regime saudável) ou residual z-score do HI.",
-        interpretation="Scores altos perto do fim de vida ou falhas abruptas são esperados.",
-        limitations="Sem ground-truth industrial.",
-        label="Sobre este painel",
-    )
+    methodology_block(info="Detecção de anomalias.", method="Isolation Forest ou residual z-score.", interpretation="Scores altos perto do fim de vida são esperados.", limitations="Sem ground-truth industrial.", label="Sobre este painel")
     a1, a2, a3, a4 = st.columns(4)
-    with a1:
-        anom_method = st.selectbox("Método", options=["isolation_forest", "residual_zscore"], format_func=lambda x: "Isolation Forest" if x == "isolation_forest" else "Residual z-score", key="anom_m")
+    with a1: anom_method = st.selectbox("Método", options=["isolation_forest", "residual_zscore"], format_func=lambda x: "Isolation Forest" if x == "isolation_forest" else "Residual z-score", key="anom_m")
     with a2: anom_units = st.slider("Unidades", 8, 32, 16, 2, key="anom_u")
     with a3:
         if anom_method == "isolation_forest": anom_cont = st.slider("Contamination", 0.01, 0.15, 0.05, 0.01, key="anom_c")
@@ -214,13 +218,7 @@ with tab_anom:
         st.info("Configure e clique em **Detectar**.")
 
 with tab_mc:
-    methodology_block(
-        info="Incerteza de RUL + risk assessment (threshold configurável).",
-        method="Monte Carlo no Digital Twin. Expected/P10/P50/P90 da distribuição empírica.",
-        interpretation="Risk level usa thresholds de engenharia, não normas aeronáuticas.",
-        limitations="Fontes de incerteza não ortogonais. Dados sintéticos.",
-        label="Sobre este painel",
-    )
+    methodology_block(info="Incerteza de RUL + risk.", method="Monte Carlo no Digital Twin.", interpretation="Thresholds configuráveis.", limitations="Dados sintéticos no MC atual.", label="Sobre este painel")
     mc1, mc2, mc3, mc4 = st.columns(4)
     with mc1: mc_runs = st.slider("Trajetórias", 8, 40, 16, 2, key="mc_r")
     with mc2: mc_life = st.slider("Vida útil", 80, 220, 140, 10, key="mc_l")
@@ -230,50 +228,22 @@ with tab_mc:
     if st.button("Executar", type="primary", key="mc_btn"):
         with st.spinner("Monte Carlo..."):
             try:
-                st.session_state["mc_result"] = run_monte_carlo_rul(
-                    n_runs=int(mc_runs), max_cycles=int(mc_life), reference_cycle_fraction=float(mc_frac),
-                    base_seed=int(mc_seed), noise_std=noise_std, n_calibration_units=8)
+                st.session_state["mc_result"] = run_monte_carlo_rul(n_runs=int(mc_runs), max_cycles=int(mc_life), reference_cycle_fraction=float(mc_frac), base_seed=int(mc_seed), noise_std=noise_std, n_calibration_units=8)
             except Exception as e:
                 st.error("Falha."); st.caption(str(e))
     if "mc_result" in st.session_state:
         r = st.session_state["mc_result"]
-        if r.n_runs < 1 or not np.isfinite(r.mean):
-            st.warning("Dados insuficientes.")
-        else:
+        if r.n_runs >= 1 and np.isfinite(r.mean):
             from aeroquant.risk.assessment import assess_risk
             risk = assess_risk(r.rul_samples, maintenance_threshold=float(maint_thr))
-            p10 = float(np.percentile(r.rul_samples, 10))
-            p90 = float(np.percentile(r.rul_samples, 90))
+            p10 = float(np.percentile(r.rul_samples, 10)); p90 = float(np.percentile(r.rul_samples, 90))
             k1, k2, k3, k4, k5, k6 = st.columns(6)
-            k1.metric("Expected RUL", f"{r.mean:.1f}")
-            k2.metric("P10", f"{p10:.0f}")
-            k3.metric("P50", f"{r.q50:.0f}")
-            k4.metric("P90", f"{p90:.0f}")
-            k5.metric(f"P(RUL<{int(maint_thr)})", f"{100*risk.prob_below_threshold:.0f}%")
-            k6.metric("Risk", risk.level)
+            k1.metric("Expected RUL", f"{r.mean:.1f}"); k2.metric("P10", f"{p10:.0f}"); k3.metric("P50", f"{r.q50:.0f}")
+            k4.metric("P90", f"{p90:.0f}"); k5.metric(f"P(RUL<{int(maint_thr)})", f"{100*risk.prob_below_threshold:.0f}%"); k6.metric("Risk", risk.level)
             st.caption(risk.rationale)
-            xa, xb = st.columns(2)
-            with xa:
-                fig = go.Figure()
-                fig.add_trace(go.Histogram(x=r.rul_samples, nbinsx=18, marker_color=THEME["SERIES_A"]))
-                fig.add_vline(x=r.true_rul_at_ref, line_dash="dash", line_color=THEME["ERROR"])
-                fig.add_vline(x=r.mean, line_dash="solid", line_color=THEME["SERIES_B"])
-                fig.update_layout(**plotly_layout(THEME, height=320, x_title="RUL (ciclos)", show_legend=False))
-                st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
-            with xb:
-                fig = go.Figure(go.Bar(x=["Total", "Aleatória", "Epistêmica"], y=[r.var_total, r.var_aleatoric, r.var_epistemic],
-                                       marker_color=[THEME["SERIES_MUTED"], THEME["SERIES_A"], THEME["SERIES_B"]]))
-                fig.update_layout(**plotly_layout(THEME, height=320, y_title="Variância", show_legend=False))
-                st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
     else:
         st.info("Configure e clique em **Executar**.")
 
 with tab_risk:
     from risk_panel import render_risk_tab
-    render_risk_tab(
-        noise_std=noise_std,
-        THEME=THEME,
-        plotly_layout=plotly_layout,
-        methodology_block=methodology_block,
-        PLOTLY_CONFIG=PLOTLY_CONFIG,
-    )
+    render_risk_tab(noise_std=noise_std, THEME=THEME, plotly_layout=plotly_layout, methodology_block=methodology_block, PLOTLY_CONFIG=PLOTLY_CONFIG)
