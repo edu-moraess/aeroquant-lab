@@ -47,6 +47,7 @@ from aeroquant.uncertainty.monte_carlo_rul import run_monte_carlo_rul
 from aeroquant.xai.shap_explainer import explain_model
 from ml_experiment import run_ml_experiment
 from nn_experiment import run_nn_experiment
+from seq_experiment import run_seq_experiment
 from ui_theme import apply_global_css, get_theme, methodology_block, plotly_layout
 
 PLOTLY_CONFIG = {
@@ -292,7 +293,7 @@ with tab_ml:
         info="Comparação de modelos de RUL em frota sintética.",
         method="Linear, Random Forest, GBM Quantile e MLP. Split por unidade. RMSE, MAE, NASA score.",
         interpretation="Menor RMSE = melhor ajuste. NASA penaliza superestimação. SHAP explica o modelo, não a física.",
-        limitations="Só dados sintéticos. LSTM sequencial ainda não integrado.",
+        limitations="Só dados sintéticos. LSTM sequencial ainda não integrado nesta aba.",
         label="Sobre este painel",
     )
     m1, m2, m3 = st.columns(3)
@@ -369,63 +370,147 @@ with tab_ml:
 
 with tab_nn:
     methodology_block(
-        info="Rede neural feed-forward (MLP) para RUL em frota sintética.",
-        method="MLPRegressor (scikit-learn) com StandardScaler, early stopping e validação interna. Split por unidade. Opcionalmente compara Linear e RF.",
-        interpretation="Curva de perda deve decrescer e estabilizar. Compare RMSE/MAE com baselines clássicos neste regime de dados sintéticos.",
-        limitations="Features tabulares (não sequência). LSTM/Transformer ainda não integrados. Dados sintéticos apenas.",
+        info="Redes neurais para RUL: MLP tabular e modelos sequenciais (janelas temporais).",
+        method="MLP tabular: features engenheiradas. Sequence MLP: janelas (T×F) achatadas + MLP. LSTM: sequências com PyTorch (se instalado). Split por unidade.",
+        interpretation="Compare RMSE/MAE entre modos. Sequence models capturam dependência temporal explícita; LSTM exige torch.",
+        limitations="Dados sintéticos. LSTM opcional (torch). Sem Transformer nesta versão.",
         label="Sobre este painel",
     )
-    n1, n2, n3, n4 = st.columns(4)
-    with n1:
-        nn_units = st.slider("Unidades", 12, 40, 24, 4, key="nn_u")
-    with n2:
-        nn_seed = st.number_input("Seed", value=2026, step=1, key="nn_s")
-    with n3:
-        nn_arch = st.selectbox("Arquitetura", options=["(32,)", "(64, 32)", "(128, 64)", "(64, 32, 16)"], index=1, key="nn_a")
-    with n4:
-        nn_iter = st.slider("Max iterações", 50, 400, 200, 25, key="nn_i")
-    compare_bl = st.checkbox("Comparar com Linear e RF", value=True, key="nn_cmp")
-    if st.button("Treinar MLP", type="primary", key="nn_btn"):
-        hidden = tuple(int(x.strip()) for x in nn_arch.strip("()").split(",") if x.strip())
-        with st.spinner("Treinando rede neural..."):
-            try:
-                st.session_state["nn_result"] = run_nn_experiment(
-                    n_units=int(nn_units), seed=int(nn_seed), noise_std=noise_std,
-                    hidden=hidden, max_iter=int(nn_iter), compare_baselines=bool(compare_bl),
-                )
-            except Exception as e:
-                st.error("Falha no treino da rede neural.")
-                st.caption(str(e))
-    if "nn_result" in st.session_state:
-        res = st.session_state["nn_result"]
-        st.caption(f"{res.architecture} · épocas {res.n_epochs} · treino {res.n_train_units} · teste {res.n_test_units} · features {res.n_features}")
-        st.dataframe(res.metrics_table, use_container_width=True, hide_index=True)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("**Predito × Verdadeiro (MLP)**")
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=res.test_true, y=res.test_pred_mlp, mode="markers", marker=dict(size=5, opacity=0.45, color=THEME["SERIES_A"]), name="MLP"))
-            mx = float(max(res.test_true.max(), res.test_pred_mlp.max()))
-            fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode="lines", line=dict(color=THEME["SERIES_MUTED"], dash="dash"), name="Ideal"))
-            fig.update_layout(**plotly_layout(THEME, height=340, x_title="RUL verdadeiro", y_title="RUL previsto"))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
-        with c2:
-            st.markdown("**Curva de perda**")
-            if res.loss_curve:
+
+    mode = st.radio(
+        "Modo",
+        options=["MLP tabular", "Sequence MLP", "LSTM"],
+        horizontal=True,
+        key="nn_mode",
+        help="LSTM requer PyTorch. No Streamlit Cloud use Sequence MLP se torch não estiver disponível.",
+    )
+
+    if mode == "MLP tabular":
+        n1, n2, n3, n4 = st.columns(4)
+        with n1:
+            nn_units = st.slider("Unidades", 12, 40, 24, 4, key="nn_u")
+        with n2:
+            nn_seed = st.number_input("Seed", value=2026, step=1, key="nn_s")
+        with n3:
+            nn_arch = st.selectbox("Arquitetura", options=["(32,)", "(64, 32)", "(128, 64)", "(64, 32, 16)"], index=1, key="nn_a")
+        with n4:
+            nn_iter = st.slider("Max iterações", 50, 400, 200, 25, key="nn_i")
+        compare_bl = st.checkbox("Comparar com Linear e RF", value=True, key="nn_cmp")
+        if st.button("Treinar MLP", type="primary", key="nn_btn"):
+            hidden = tuple(int(x.strip()) for x in nn_arch.strip("()").split(",") if x.strip())
+            with st.spinner("Treinando MLP tabular..."):
+                try:
+                    st.session_state["nn_result"] = run_nn_experiment(
+                        n_units=int(nn_units), seed=int(nn_seed), noise_std=noise_std,
+                        hidden=hidden, max_iter=int(nn_iter), compare_baselines=bool(compare_bl),
+                    )
+                    st.session_state.pop("seq_result", None)
+                except Exception as e:
+                    st.error("Falha no treino da rede neural.")
+                    st.caption(str(e))
+        if "nn_result" in st.session_state:
+            res = st.session_state["nn_result"]
+            st.caption(f"{res.architecture} · épocas {res.n_epochs} · treino {res.n_train_units} · teste {res.n_test_units} · features {res.n_features}")
+            st.dataframe(res.metrics_table, use_container_width=True, hide_index=True)
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**Predito × Verdadeiro (MLP)**")
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(y=res.loss_curve, mode="lines", line=dict(color=THEME["SERIES_B"], width=2), name="loss"))
-                fig.update_layout(**plotly_layout(THEME, height=340, x_title="Época", y_title="Loss", show_legend=False))
+                fig.add_trace(go.Scatter(x=res.test_true, y=res.test_pred_mlp, mode="markers", marker=dict(size=5, opacity=0.45, color=THEME["SERIES_A"]), name="MLP"))
+                mx = float(max(res.test_true.max(), res.test_pred_mlp.max()))
+                fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode="lines", line=dict(color=THEME["SERIES_MUTED"], dash="dash"), name="Ideal"))
+                fig.update_layout(**plotly_layout(THEME, height=340, x_title="RUL verdadeiro", y_title="RUL previsto"))
                 st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
-            else:
-                st.info("Curva de perda indisponível para esta execução.")
-        residual = res.test_pred_mlp - res.test_true
-        st.markdown("**Residual MLP**")
-        fig = go.Figure(go.Histogram(x=residual, nbinsx=36, marker_color=THEME["SERIES_D"]))
-        fig.add_vline(x=0, line_dash="dot", line_color=THEME["SERIES_MUTED"])
-        fig.update_layout(**plotly_layout(THEME, height=240, x_title="pred − true", show_legend=False))
-        st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            with c2:
+                st.markdown("**Curva de perda**")
+                if res.loss_curve:
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(y=res.loss_curve, mode="lines", line=dict(color=THEME["SERIES_B"], width=2), name="loss"))
+                    fig.update_layout(**plotly_layout(THEME, height=340, x_title="Época", y_title="Loss", show_legend=False))
+                    st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+                else:
+                    st.info("Curva de perda indisponível.")
+            residual = res.test_pred_mlp - res.test_true
+            st.markdown("**Residual**")
+            fig = go.Figure(go.Histogram(x=residual, nbinsx=36, marker_color=THEME["SERIES_D"]))
+            fig.add_vline(x=0, line_dash="dot", line_color=THEME["SERIES_MUTED"])
+            fig.update_layout(**plotly_layout(THEME, height=240, x_title="pred − true", show_legend=False))
+            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+        else:
+            st.info("Configure e clique em **Treinar MLP**.")
+
     else:
-        st.info("Configure a arquitetura e clique em **Treinar MLP**.")
+        s1, s2, s3, s4 = st.columns(4)
+        with s1:
+            seq_units = st.slider("Unidades", 12, 36, 20, 4, key="seq_u")
+        with s2:
+            seq_len = st.slider("Janela T", 10, 50, 30, 5, key="seq_t")
+        with s3:
+            seq_seed = st.number_input("Seed", value=2026, step=1, key="seq_s")
+        with s4:
+            if mode == "LSTM":
+                seq_epochs = st.slider("Épocas LSTM", 10, 80, 30, 5, key="seq_e")
+            else:
+                seq_iter = st.slider("Max iterações", 50, 300, 150, 25, key="seq_i")
+
+        label = "Treinar LSTM" if mode == "LSTM" else "Treinar Sequence MLP"
+        if st.button(label, type="primary", key="seq_btn"):
+            with st.spinner("Treinando modelo sequencial..."):
+                try:
+                    kwargs = dict(
+                        n_units=int(seq_units),
+                        seed=int(seq_seed),
+                        noise_std=noise_std,
+                        seq_len=int(seq_len),
+                        stride=2,
+                        model="lstm" if mode == "LSTM" else "sequence_mlp",
+                    )
+                    if mode == "LSTM":
+                        kwargs["lstm_epochs"] = int(seq_epochs)
+                    else:
+                        kwargs["max_iter"] = int(seq_iter)
+                    st.session_state["seq_result"] = run_seq_experiment(**kwargs)
+                    st.session_state.pop("nn_result", None)
+                except Exception as e:
+                    st.error("Falha no treino sequencial.")
+                    st.caption(str(e))
+
+        if "seq_result" in st.session_state:
+            res = st.session_state["seq_result"]
+            st.caption(
+                f"{res.algorithm} · T={res.seq_len} · épocas {res.n_epochs} · "
+                f"janelas treino {res.n_train_windows} · teste {res.n_test_windows} · "
+                f"features {res.n_features} · torch={'sim' if res.torch_available else 'não'}"
+            )
+            st.dataframe(res.metrics_table, use_container_width=True, hide_index=True)
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**Predito × Verdadeiro**")
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=res.test_true, y=res.test_pred, mode="markers", marker=dict(size=5, opacity=0.45, color=THEME["SERIES_A"]), name=res.model_name))
+                mx = float(max(res.test_true.max(), res.test_pred.max()))
+                fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode="lines", line=dict(color=THEME["SERIES_MUTED"], dash="dash"), name="Ideal"))
+                fig.update_layout(**plotly_layout(THEME, height=340, x_title="RUL verdadeiro", y_title="RUL previsto"))
+                st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            with c2:
+                st.markdown("**Curva de perda**")
+                if res.loss_curve:
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(y=res.loss_curve, mode="lines", line=dict(color=THEME["SERIES_C"], width=2), name="loss"))
+                    fig.update_layout(**plotly_layout(THEME, height=340, x_title="Época", y_title="Loss", show_legend=False))
+                    st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+                else:
+                    st.info("Curva de perda indisponível.")
+            residual = res.test_pred - res.test_true
+            st.markdown("**Residual**")
+            fig = go.Figure(go.Histogram(x=residual, nbinsx=36, marker_color=THEME["SERIES_D"]))
+            fig.add_vline(x=0, line_dash="dot", line_color=THEME["SERIES_MUTED"])
+            fig.update_layout(**plotly_layout(THEME, height=240, x_title="pred − true", show_legend=False))
+            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+        else:
+            st.info(f"Configure e clique em **{label}**.")
+            if mode == "LSTM":
+                st.caption("LSTM requer o pacote `torch`. Se falhar no Cloud, use Sequence MLP.")
 
 with tab_mc:
     methodology_block(
