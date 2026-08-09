@@ -45,6 +45,7 @@ from aeroquant.sensor_data.infrastructure.generators.stochastic_generator import
 from aeroquant.uncertainty.monte_carlo_rul import run_monte_carlo_rul
 from aeroquant.xai.shap_explainer import explain_model
 from anomaly_experiment import run_anomaly_experiment
+from methodology_panel import render_methodology_sidebar
 from ml_experiment import run_ml_experiment
 from nn_experiment import run_nn_experiment
 from seq_experiment import run_seq_experiment
@@ -98,6 +99,7 @@ with st.sidebar:
     n_units_fleet = st.slider("Unidades", 8, 40, 16, 2)
 
     st.divider()
+    render_methodology_sidebar()
     st.caption(f"[GitHub]({REPO_URL})")
 
 schema = build_cmapss_like_schema()
