@@ -55,6 +55,13 @@ name = "aeroquant-lab"
 version = "0.3.0"
 package-mode = false
 
+[tool.poetry.dependencies]
+streamlit = ">=1.35"
+plotly = "*"
+
+[tool.poetry.extras]
+dashboard = ["streamlit", "plotly"]
+
 [tool.ruff]
 line-length = 110
 target-version = "py312"
