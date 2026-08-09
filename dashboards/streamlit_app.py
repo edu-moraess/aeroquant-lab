@@ -2,7 +2,7 @@
 AeroQuant Lab — Dashboard unificado (Streamlit).
 
 Uma única aplicação. Sem multipage no sidebar.
-Abas: Digital Twin · Fleet · ML RUL · Monte Carlo · Sobre.
+Abas: Digital Twin · Fleet · ML RUL · Monte Carlo.
 
     streamlit run dashboards/streamlit_app.py
 """
@@ -44,6 +44,7 @@ from aeroquant.sensor_data.infrastructure.generators.stochastic_generator import
     StochasticSensorGenerator,
 )
 from aeroquant.uncertainty.monte_carlo_rul import run_monte_carlo_rul
+from aeroquant.xai.shap_explainer import explain_model
 
 from ml_experiment import run_ml_experiment
 
@@ -72,7 +73,7 @@ st.markdown(
 
 st.title("AeroQuant Lab")
 st.caption(
-    "Digital Twin · RUL com incerteza · ML · Monte Carlo — "
+    "Digital Twin · RUL com incerteza · ML · Monte Carlo · XAI — "
     "monitoramento de saúde de motores turbofan (C-MAPSS-like)."
 )
 
@@ -117,8 +118,8 @@ def _build_dt(coupling: float):
     return dt, failure_threshold
 
 
-tab_twin, tab_fleet, tab_ml, tab_mc, tab_about = st.tabs(
-    ["Digital Twin", "Fleet View", "ML RUL", "Monte Carlo", "Sobre"]
+tab_twin, tab_fleet, tab_ml, tab_mc = st.tabs(
+    ["Digital Twin", "Fleet View", "ML RUL", "Monte Carlo"]
 )
 
 with tab_twin:
@@ -288,6 +289,7 @@ with tab_ml:
             st.session_state["ml_result"] = run_ml_experiment(
                 n_units=int(ml_units), seed=int(ml_seed), noise_std=noise_std, n_estimators=int(ml_trees),
             )
+            st.session_state.pop("shap_exp", None)
     if "ml_result" in st.session_state:
         res = st.session_state["ml_result"]
         st.markdown(f"**Treino:** {res.n_train_units} un. · **Teste:** {res.n_test_units} un. · **Features:** {res.n_features} · **Melhor:** `{res.best_model_name}`")
@@ -312,6 +314,35 @@ with tab_ml:
         fig_rh.add_vline(x=0, line_dash="dot", line_color="#94a3b8")
         fig_rh.update_layout(height=280, template="plotly_dark", title="Residual (pred − true)", xaxis_title="ciclos", margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig_rh, use_container_width=True)
+
+        st.subheader("Explicabilidade (SHAP)")
+        st.caption("SHAP explica o **modelo**, não o processo físico de degradação. TreeExplainer para RF/GBM.")
+        if res.trained_model is not None and res.X_test is not None:
+            if st.button("Calcular SHAP", key="shap_btn"):
+                with st.spinner("Calculando valores SHAP..."):
+                    try:
+                        exp = explain_model(res.trained_model, res.X_test, max_samples=min(150, len(res.X_test)), local_index=0)
+                        st.session_state["shap_exp"] = exp
+                    except Exception as e:
+                        st.error(f"SHAP falhou: {e}")
+            if "shap_exp" in st.session_state:
+                exp = st.session_state["shap_exp"]
+                st.caption(f"Método: `{exp.method}` · amostras: {exp.n_samples_explained} · base value: {exp.base_value:.2f}")
+                sx, sy = st.columns(2)
+                with sx:
+                    fig_g = go.Figure(go.Bar(x=exp.feature_importance["mean_abs_shap"][::-1], y=exp.feature_importance["feature"][::-1], orientation="h", marker_color="#22d3ee"))
+                    fig_g.update_layout(height=400, template="plotly_dark", title="Importância global (|SHAP| médio)", margin=dict(l=10, r=10, t=40, b=10), xaxis_title="mean |SHAP|")
+                    st.plotly_chart(fig_g, use_container_width=True)
+                with sy:
+                    if exp.local_shap is not None:
+                        colors = ["#ef4444" if v < 0 else "#22c55e" for v in exp.local_shap["shap_value"][::-1]]
+                        fig_l = go.Figure(go.Bar(x=exp.local_shap["shap_value"][::-1], y=exp.local_shap["feature"][::-1], orientation="h", marker_color=colors))
+                        fig_l.update_layout(height=400, template="plotly_dark", title="Explicação local (1ª amostra de teste)", margin=dict(l=10, r=10, t=40, b=10), xaxis_title="SHAP value")
+                        st.plotly_chart(fig_l, use_container_width=True)
+                    else:
+                        st.info("Explicação local disponível apenas com TreeSHAP.")
+        else:
+            st.caption("Treine um modelo para habilitar SHAP.")
     else:
         st.info("Clique em **Treinar e comparar** para executar o experimento.")
 
@@ -359,27 +390,3 @@ with tab_mc:
         st.caption("Aleatória: ruído + seed Gamma. Epistêmica: percentil do limiar (30–70). Fontes não ortogonais.")
     else:
         st.info("Configure parâmetros e clique em **Executar Monte Carlo**.")
-
-with tab_about:
-    st.subheader("AeroQuant Lab")
-    st.markdown(f"""Plataforma de pesquisa em **Python** para monitoramento inteligente da saúde de aeronaves (turbofan C-MAPSS-like). Foco: **Digital Twin** + **RUL com incerteza** + manutenção preditiva.\n\n[Repositório GitHub]({REPO_URL}) · licença MIT.""")
-    st.subheader("Status das fases")
-    st.dataframe(pd.DataFrame([
-        {"Fase": "1 — Arquitetura", "Status": "Concluída"},
-        {"Fase": "2 — Pergunta científica", "Status": "Concluída"},
-        {"Fase": "3 — Engenharia de dados", "Status": "Concluída"},
-        {"Fase": "4 — Dados sintéticos", "Status": "Concluída (C-MAPSS real pendente)"},
-        {"Fase": "5 — Digital Twin", "Status": "Concluída"},
-        {"Fase": "6 — Machine Learning RUL", "Status": "Concluída (sklearn)"},
-        {"Fase": "7 — Computer Vision", "Status": "Planejada"},
-        {"Fase": "8 — Monte Carlo", "Status": "Concluída"},
-        {"Fase": "9 — XAI (SHAP)", "Status": "Próxima"},
-        {"Fase": "10 — Dashboard", "Status": "Esta aplicação"},
-        {"Fase": "11 — MLOps", "Status": "Parcial"},
-        {"Fase": "12 — Validação científica", "Status": "Planejada"},
-        {"Fase": "13 — Publicação", "Status": "Planejada"},
-    ]), use_container_width=True, hide_index=True)
-    st.subheader("Arquitetura")
-    st.markdown("""Clean Architecture por **Bounded Context** (DDD):\n\n- `sensor_data` — gerador estocástico, ETL, schema C-MAPSS-like\n- `digital_twin` — Welford baseline, HI z-score, RUL OLS, limiar calibrado\n- `ml` — trainers sklearn, split por unidade, métricas NASA\n- `uncertainty` — Monte Carlo com decomposição aleatória/epistêmica""")
-    st.subheader("Limitações (honestidade científica)")
-    st.markdown("""- Dados reais C-MAPSS ainda não carregados — adapter existe, validação pendente.\n- Decomposição de incerteza é **empírica**, não Bayesiana formal.\n- Repositório do Digital Twin é in-memory (demos e testes).\n- Deep learning (LSTM) e XAI (SHAP) ainda não integrados neste dashboard.""")
