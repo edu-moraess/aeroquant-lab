@@ -1,7 +1,6 @@
 """
-Helpers de UI. Tema visual = 100% nativo do Streamlit.
-
-Não força cores de fundo/CSS. O usuário troca em ⋮ → Settings → Theme.
+Helpers de UI. Tema visual = nativo do Streamlit.
+Modebar Plotly transparente e canto superior direito.
 """
 from __future__ import annotations
 
@@ -21,9 +20,31 @@ SERIES = {
     "FILL_WARN": "rgba(220, 38, 38, 0.12)",
 }
 
+PLOTLY_CONFIG: dict[str, Any] = {
+    "displayModeBar": True,
+    "displaylogo": False,
+    "responsive": True,
+    "modeBarButtonsToRemove": [
+        "lasso2d",
+        "select2d",
+        "autoScale2d",
+        "hoverClosestCartesian",
+        "hoverCompareCartesian",
+        "toggleSpikelines",
+        "zoomIn2d",
+        "zoomOut2d",
+    ],
+    "toImageButtonOptions": {
+        "format": "png",
+        "filename": "aeroquant",
+        "height": None,
+        "width": None,
+        "scale": 2,
+    },
+}
+
 
 def get_theme() -> dict[str, str]:
-    """Paleta de séries (sem forçar fundo da app)."""
     return {
         "SERIES_A": SERIES["A"],
         "SERIES_B": SERIES["B"],
@@ -47,8 +68,50 @@ def get_theme() -> dict[str, str]:
 
 
 def apply_global_css(theme: dict[str, str] | None = None) -> None:
-    """No-op — preserva o tema original do Streamlit."""
-    return
+    """CSS mínimo: modebar transparente no canto superior direito."""
+    st.markdown(
+        """
+        <style>
+        .js-plotly-plot .modebar {
+            top: 2px !important;
+            right: 2px !important;
+            left: auto !important;
+            background: transparent !important;
+            backdrop-filter: none !important;
+        }
+        .js-plotly-plot .modebar-group {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            margin-left: 2px !important;
+        }
+        .js-plotly-plot .modebar-btn {
+            background: transparent !important;
+            border: none !important;
+        }
+        .js-plotly-plot .modebar-btn:hover {
+            background: rgba(128, 128, 128, 0.18) !important;
+        }
+        .js-plotly-plot .modebar-btn path {
+            fill-opacity: 0.55 !important;
+        }
+        .js-plotly-plot .modebar-btn:hover path {
+            fill-opacity: 0.9 !important;
+        }
+        .block-container {
+            padding-top: 1.1rem;
+            padding-bottom: 2rem;
+            max-width: 1200px;
+        }
+        h1 {
+            font-size: 1.4rem !important;
+            font-weight: 600 !important;
+            margin-bottom: 0.1rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def plotly_layout(
@@ -60,20 +123,27 @@ def plotly_layout(
     y_title: str | None = None,
     show_legend: bool = True,
 ) -> dict[str, Any]:
-    """Fundo transparente — Streamlit controla Light/Dark."""
     layout: dict[str, Any] = dict(
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=48, r=12, t=36 if title else 20, b=40),
+        margin=dict(l=48, r=28, t=44 if title else 32, b=40),
         font=dict(size=12),
         xaxis=dict(title=x_title or "", showgrid=True, zeroline=False),
         yaxis=dict(title=y_title or "", showgrid=True, zeroline=False),
+        modebar=dict(
+            orientation="v",
+            bgcolor="rgba(0,0,0,0)",
+            color="rgba(128,128,128,0.7)",
+            activecolor="rgba(128,128,128,1)",
+        ),
     )
     if title:
-        layout["title"] = dict(text=title, font=dict(size=13))
+        layout["title"] = dict(text=title, font=dict(size=13), x=0, xanchor="left")
     if show_legend:
-        layout["legend"] = dict(orientation="h", y=1.06, x=0, bgcolor="rgba(0,0,0,0)")
+        layout["legend"] = dict(
+            orientation="h", y=1.12, x=0, bgcolor="rgba(0,0,0,0)", borderwidth=0,
+        )
     else:
         layout["showlegend"] = False
     return layout
