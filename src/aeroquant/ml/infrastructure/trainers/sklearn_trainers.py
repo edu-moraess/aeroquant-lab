@@ -108,7 +108,7 @@ class MLPTrainer:
             "loss_curve": list(getattr(mlp, "loss_curve_", []) or []),
             "validation_scores": list(getattr(mlp, "validation_scores_", []) or []),
             "n_iter": int(getattr(mlp, "n_iter_", 0) or 0),
-            "best_loss": float(getattr(mlp, "best_loss_", float("nan"))),
+            "best_loss": float(getattr(mlp, "best_loss_", None) or float("nan")),
             "n_layers": len(self._hidden),
             "n_params_approx": int(sum(
                 a * b for a, b in zip([X.shape[1]] + list(self._hidden), list(self._hidden) + [1])
