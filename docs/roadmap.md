@@ -15,6 +15,7 @@ Fase 1 (núcleo = RUL + Digital Twin).
 - [x] Fase 9 — XAI (TreeSHAP sobre RF/GBM + explicação local/global no dashboard)
 - [x] Fase 10 — Dashboard unificado (Streamlit: DT · Fleet · ML · Neural Net · Monte Carlo)
 - [x] MLP feed-forward para RUL (sklearn, dashboard Neural Net)
+- [x] Modelos sequenciais: janelas + Sequence MLP; LSTM (torch opcional)
 
 ## Bloqueado (depende de ação externa)
 
@@ -23,7 +24,7 @@ Fase 1 (núcleo = RUL + Digital Twin).
 
 ## Próximo
 
-- [ ] Deep learning sequencial para RUL (LSTM/Transformer)
+- [ ] Transformer para RUL
 - [~] Decomposição de incerteza (H3) — parcial: HI data-driven, quantile ML, Monte Carlo
 - [ ] Anomaly Detection como Bounded Context próprio
 - [ ] Fase 12 — Validação científica formal
