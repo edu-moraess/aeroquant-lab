@@ -58,20 +58,17 @@ st.set_page_config(
 )
 
 with st.sidebar:
+    st.markdown("**Aparência**")
+    _default_idx = 1 if st.session_state.get("_aq_theme_base") == "light" else 0
     theme_choice = st.radio(
         "Tema",
-        options=["Sistema", "Escuro", "Claro"],
-        index=0,
+        options=["Escuro", "Claro"],
+        index=_default_idx,
         horizontal=True,
-        label_visibility="collapsed",
         key="theme_radio",
+        help="Alterna cores da interface, métricas e gráficos (Light / Dark).",
     )
-    if theme_choice == "Claro":
-        st.session_state["_aq_theme_base"] = "light"
-    elif theme_choice == "Escuro":
-        st.session_state["_aq_theme_base"] = "dark"
-    else:
-        st.session_state.pop("_aq_theme_base", None)
+    st.session_state["_aq_theme_base"] = "light" if theme_choice == "Claro" else "dark"
 
 THEME = get_theme()
 apply_global_css(THEME)
