@@ -82,11 +82,17 @@ def get_theme() -> dict[str, str]:
 
 
 def apply_global_css(theme: dict[str, str] | None = None) -> None:
-    """CSS minimalista que acompanha o tema ativo (sem forçar dark)."""
+    """CSS que acompanha o tema ativo. Não esconde o menu do Streamlit."""
     t = theme or get_theme()
     st.markdown(
         f"""
         <style>
+        .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
+            background-color: {t["BACKGROUND"]} !important;
+        }}
+        section[data-testid="stSidebar"] > div:first-child {{
+            background-color: {t["SURFACE"]} !important;
+        }}
         .block-container {{
             padding-top: 1.25rem;
             padding-bottom: 2rem;
@@ -130,8 +136,6 @@ def apply_global_css(theme: dict[str, str] | None = None) -> None:
         h1 {{ font-size: 1.55rem !important; font-weight: 600 !important; margin-bottom: 0.15rem !important; }}
         h2, h3 {{ font-size: 1.05rem !important; font-weight: 600 !important; }}
         .stCaption {{ color: {t["TEXT_SECONDARY"]} !important; }}
-        #MainMenu {{ visibility: hidden; }}
-        footer {{ visibility: hidden; }}
         </style>
         """,
         unsafe_allow_html=True,
