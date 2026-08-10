@@ -78,6 +78,11 @@ apply_global_css(THEME)
 st.title("AeroQuant Lab")
 st.caption("Digital Twin · RUL · ML · Neural Net · Anomalias · Monte Carlo · Risk")
 
+_hero = _ROOT / "docs" / "assets" / "hero_3d.png"
+if _hero.exists():
+    st.image(str(_hero), width="stretch")
+st.divider()
+
 with st.sidebar:
     st.markdown("**Simulação**")
     max_cycles = st.slider("Vida útil (ciclos)", 60, 300, 170, 10)
@@ -182,7 +187,7 @@ with tab_twin:
             fig.add_trace(go.Scatter(x=df["cycle"], y=df["rul_upper"], line=dict(width=0), showlegend=False, hoverinfo="skip"))
             fig.add_trace(go.Scatter(x=df["cycle"], y=df["rul_lower"], fill="tonexty", fillcolor=THEME["FILL_ACCENT"], name=f"IC {int(confidence * 100)}%", line=dict(width=0)))
             fig.update_layout(**plotly_layout(THEME, height=360, x_title="Ciclo", y_title="Ciclos restantes"))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
         with col2:
             st.markdown("**Health Index**")
             anom = df[df["anomaly"]]
@@ -192,7 +197,7 @@ with tab_twin:
                 fig.add_trace(go.Scatter(x=anom["cycle"], y=anom["health_index"], mode="markers", name="Anomalia", marker=dict(color=THEME["ERROR"], size=8, symbol="x")))
             fig.add_hline(y=failure_threshold, line_dash="dash", line_color=THEME["SERIES_MUTED"], annotation_text="limiar", annotation_font_color=THEME["TEXT_SECONDARY"])
             fig.update_layout(**plotly_layout(THEME, height=360, x_title="Ciclo", y_title="HI"))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
 
         c3, c4 = st.columns(2)
         with c3:
@@ -201,13 +206,13 @@ with tab_twin:
             fig.add_trace(go.Scatter(x=df["cycle"], y=df["residual"], mode="lines", line=dict(color=THEME["SERIES_D"], width=1.5)))
             fig.add_hline(y=0, line_dash="dot", line_color=THEME["SERIES_MUTED"])
             fig.update_layout(**plotly_layout(THEME, height=280, x_title="Ciclo", y_title="Ciclos", show_legend=False))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
         with c4:
             st.markdown("**Incerteza OLS**")
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=df["cycle"], y=df["uncertainty_half"], fill="tozeroy", fillcolor=THEME["FILL_ACCENT"], line=dict(color=THEME["SERIES_A"], width=1.5)))
             fig.update_layout(**plotly_layout(THEME, height=280, x_title="Ciclo", y_title="± ciclos", show_legend=False))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
 
         st.markdown("**Sensores**")
         default_sensors = [s.name for s in schema.sensors if s.degradation_coupling >= 0.3][:5]
@@ -219,7 +224,7 @@ with tab_twin:
                 vals = [r.values[name] for r in readings]
                 fig.add_trace(go.Scatter(x=df["cycle"], y=vals, name=f"{name} (κ={spec.degradation_coupling:.2f})", line=dict(width=1.3)))
             fig.update_layout(**plotly_layout(THEME, height=300, x_title="Ciclo", y_title="Valor"))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
 
 with tab_fleet:
     methodology_block(
@@ -257,7 +262,7 @@ with tab_fleet:
         colorscale = [[0.0, THEME["SERIES_A"]], [0.45, THEME["SERIES_C"]], [0.65, THEME["WARNING"]], [0.85, THEME["SERIES_B"]], [1.0, THEME["ERROR"]]]
         fig = go.Figure(go.Heatmap(z=hm.values, x=hm.columns, y=hm.index, colorscale=colorscale, zmid=failure_threshold, colorbar=dict(title="HI", thickness=12)))
         fig.update_layout(**plotly_layout(THEME, height=380, title=f"Limiar ≈ {failure_threshold:.3f}", x_title="Ciclo", y_title="Unidade", show_legend=False))
-        st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+        st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
 
         c5, c6 = st.columns(2)
         with c5:
@@ -265,14 +270,14 @@ with tab_fleet:
             rank = fleet_df.groupby("unit_id")["health_index"].last().sort_values(ascending=False).head(12).reset_index()
             rank.columns = ["Unidade", "HI"]
             rank["HI"] = rank["HI"].round(3)
-            st.dataframe(rank, use_container_width=True, hide_index=True, height=300)
+            st.dataframe(rank, width='stretch', hide_index=True, height=300)
         with c6:
             st.markdown("**Distribuição**")
             fig = px.histogram(final_df, x="final_hi", nbins=14, color="fault_mode", barmode="overlay", opacity=0.7,
                                color_discrete_map={"ABRUPT": THEME["ERROR"], "GRADUAL": THEME["SERIES_A"]})
             fig.add_vline(x=failure_threshold, line_dash="dash", line_color=THEME["SERIES_MUTED"])
             fig.update_layout(**plotly_layout(THEME, height=300, x_title="HI final", y_title="Contagem"))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
 
         st.markdown("**Trajetória por modo**")
         fleet_df = fleet_df.merge(final_df[["unit_id", "fault_mode"]], on="unit_id", how="left")
@@ -288,4 +293,4 @@ with tab_fleet:
                                      fillcolor=THEME["FILL_WARN"] if mode == "ABRUPT" else THEME["FILL_ACCENT"], name=f"{mode} ±1σ", line=dict(width=0)))
         fig.add_hline(y=failure_threshold, line_dash="dash", line_color=THEME["SERIES_MUTED"])
         fig.update_layout(**plotly_layout(THEME, height=320, x_title="Ciclo", y_title="HI médio"))
-        st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+        st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)

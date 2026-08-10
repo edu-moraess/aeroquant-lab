@@ -1,5 +1,7 @@
 # AeroQuant Lab
 
+![AeroQuant Lab — Digital Twin & Aircraft Health Monitoring](https://raw.githubusercontent.com/edu-moraess/aeroquant-lab/main/docs/assets/hero_3d.png)
+
 Plataforma técnica de pesquisa para **Aircraft Health Monitoring**, **Predictive Maintenance** e **Remaining Useful Life (RUL)**.
 
 Não é um produto de certificação aeronáutica. Resultados de simulação **não** representam desempenho operacional real de uma aeronave.

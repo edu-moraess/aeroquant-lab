@@ -53,12 +53,12 @@ with tab_ml:
         src_label = getattr(res, "subset", None) or getattr(res, "data_source", "synthetic")
         st.caption(f"{src_label} · Treino {res.n_train_units} · Teste {res.n_test_units} · Features {res.n_features} · Melhor: {res.best_model_name}")
         table = getattr(res, "ranked_table", None)
-        st.dataframe(table if table is not None else res.metrics_table, use_container_width=True, hide_index=True)
+        st.dataframe(table if table is not None else res.metrics_table, width='stretch', hide_index=True)
         if getattr(res, "protocol_note", None):
             st.caption(res.protocol_note)
         if getattr(res, "bucket_table", None) is not None:
             st.markdown("**Desempenho por faixa de RUL**")
-            st.dataframe(res.bucket_table, use_container_width=True, hide_index=True)
+            st.dataframe(res.bucket_table, width='stretch', hide_index=True)
         ca, cb = st.columns(2)
         with ca:
             st.markdown("**Predicted vs Actual RUL**")
@@ -67,44 +67,44 @@ with tab_ml:
             mx = float(max(res.test_true.max(), res.test_pred_best.max()))
             fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode="lines", line=dict(color=THEME["SERIES_MUTED"], dash="dash"), name="Ideal"))
             fig.update_layout(**plotly_layout(THEME, height=340, x_title="True RUL", y_title="Predicted RUL"))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
         with cb:
             st.markdown("**Importância**")
             if getattr(res, "feature_importance", None) is not None:
                 fig = go.Figure(go.Bar(x=res.feature_importance["importance"][::-1], y=res.feature_importance["feature"][::-1], orientation="h", marker_color=THEME["SERIES_B"]))
                 fig.update_layout(**plotly_layout(THEME, height=340, x_title="Importância", show_legend=False))
-                st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+                st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
             else:
                 st.info("Disponível no modo sintético (RF/GBM).")
         residual = res.test_pred_best - res.test_true
         if getattr(res, "residual_report", None) is not None:
             st.info(res.residual_report.bias_message)
-            st.dataframe(res.residual_report.summary_table(), use_container_width=True, hide_index=True)
+            st.dataframe(res.residual_report.summary_table(), width='stretch', hide_index=True)
         st.markdown("**Residual diagnostics**")
         rc1, rc2 = st.columns(2)
         with rc1:
             fig = go.Figure(go.Histogram(x=residual, nbinsx=36, marker_color=THEME["SERIES_D"]))
             fig.add_vline(x=0, line_dash="dot", line_color=THEME["SERIES_MUTED"])
             fig.update_layout(**plotly_layout(THEME, height=260, title="Residual Distribution", x_title="pred − true", show_legend=False))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
         with rc2:
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=res.test_pred_best, y=residual, mode="markers", marker=dict(size=5, opacity=0.4, color=THEME["SERIES_A"])))
             fig.add_hline(y=0, line_dash="dot", line_color=THEME["SERIES_MUTED"])
             fig.update_layout(**plotly_layout(THEME, height=260, title="Residual vs Predicted", x_title="Predicted RUL", y_title="Residual", show_legend=False))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
         rc3, rc4 = st.columns(2)
         with rc3:
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=res.test_true, y=residual, mode="markers", marker=dict(size=5, opacity=0.4, color=THEME["SERIES_C"])))
             fig.add_hline(y=0, line_dash="dot", line_color=THEME["SERIES_MUTED"])
             fig.update_layout(**plotly_layout(THEME, height=260, title="Residual vs True RUL", x_title="True RUL", y_title="Residual", show_legend=False))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
         with rc4:
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=res.test_true, y=np.abs(residual), mode="markers", marker=dict(size=5, opacity=0.4, color=THEME["SERIES_B"])))
             fig.update_layout(**plotly_layout(THEME, height=260, title="Absolute Error vs True RUL", x_title="True RUL", y_title="|error|", show_legend=False))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
         st.markdown("**SHAP**")
         if getattr(res, "trained_model", None) is not None and getattr(res, "X_test", None) is not None:
             if st.button("Calcular SHAP", key="shap_btn"):
@@ -148,13 +148,13 @@ with tab_nn:
         if "nn_result" in st.session_state:
             res = st.session_state["nn_result"]
             st.caption(f"{res.architecture} · épocas {res.n_epochs}")
-            st.dataframe(res.metrics_table, use_container_width=True, hide_index=True)
+            st.dataframe(res.metrics_table, width='stretch', hide_index=True)
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=res.test_true, y=res.test_pred_mlp, mode="markers", marker=dict(size=5, opacity=0.45, color=THEME["SERIES_A"])))
             mx = float(max(res.test_true.max(), res.test_pred_mlp.max()))
             fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode="lines", line=dict(color=THEME["SERIES_MUTED"], dash="dash")))
             fig.update_layout(**plotly_layout(THEME, height=340, x_title="True RUL", y_title="Predicted RUL", show_legend=False))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
         else:
             st.info("Configure e treine o MLP.")
     else:
@@ -180,13 +180,13 @@ with tab_nn:
         if "seq_result" in st.session_state:
             res = st.session_state["seq_result"]
             st.caption(f"{res.algorithm} · T={res.seq_len}")
-            st.dataframe(res.metrics_table, use_container_width=True, hide_index=True)
+            st.dataframe(res.metrics_table, width='stretch', hide_index=True)
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=res.test_true, y=res.test_pred, mode="markers", marker=dict(size=5, opacity=0.45, color=THEME["SERIES_A"])))
             mx = float(max(res.test_true.max(), res.test_pred.max()))
             fig.add_trace(go.Scatter(x=[0, mx], y=[0, mx], mode="lines", line=dict(color=THEME["SERIES_MUTED"], dash="dash")))
             fig.update_layout(**plotly_layout(THEME, height=340, x_title="True RUL", y_title="Predicted RUL", show_legend=False))
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+            st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
         else:
             st.info(f"Configure e clique em **{label}**.")
 
@@ -213,7 +213,7 @@ with tab_anom:
         k1, k2, k3, k4 = st.columns(4)
         k1.metric("Amostras", res.n_samples); k2.metric("Anomalias", res.n_anomalies)
         k3.metric("Taxa", f"{100 * res.rate:.1f}%"); k4.metric("Limiar", f"{res.threshold:.3f}")
-        st.dataframe(res.by_unit, use_container_width=True, hide_index=True, height=260)
+        st.dataframe(res.by_unit, width='stretch', hide_index=True, height=260)
     else:
         st.info("Configure e clique em **Detectar**.")
 

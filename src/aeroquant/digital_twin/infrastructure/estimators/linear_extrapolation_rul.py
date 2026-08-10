@@ -14,7 +14,7 @@ inversão de regressão (resolver x a partir de y) é numericamente instável
 quando a inclinação estimada é pequena mas positiva — pequenos erros de
 inclinação viram erros ENORMES no ciclo de falha projetado (dividir por
 quase-zero). Sem limite, isso produzia RUL previsto de milhares de ciclos
-para uma unidade com \~150 ciclos de vida, quebrando RMSE e até causando
+para uma unidade com ~150 ciclos de vida, quebrando RMSE e até causando
 overflow na métrica NASA (exp de um erro gigantesco). Corrigido com um
 teto de extrapolação: nunca projetar além de `max_extrapolation_multiple`
 vezes o espaço de ciclos observado na janela de ajuste — heurística padrão

@@ -67,7 +67,7 @@ def render_risk_tab(*, noise_std: float, THEME: dict, plotly_layout, methodology
     c6.metric("Risk level", risk.level)
     st.caption(risk.rationale)
     st.caption(res.protocol_note)
-    st.dataframe(pd.DataFrame([res.metrics_row]), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame([res.metrics_row]), width='stretch', hide_index=True)
 
     u1, u2 = st.columns(2)
     with u1:
@@ -84,7 +84,7 @@ def render_risk_tab(*, noise_std: float, THEME: dict, plotly_layout, methodology
                 line=dict(color=THEME["SERIES_MUTED"], dash="dash"), name="Ideal",
             ))
         fig.update_layout(**plotly_layout(THEME, height=340, x_title="True RUL", y_title="Predicted RUL"))
-        st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+        st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
     with u2:
         st.markdown("**Prediction interval (P10–P90)**")
         fig = go.Figure()
@@ -104,4 +104,4 @@ def render_risk_tab(*, noise_std: float, THEME: dict, plotly_layout, methodology
             line_color=THEME["ERROR"], annotation_text="threshold",
         )
         fig.update_layout(**plotly_layout(THEME, height=340, x_title="True RUL (sorted)", y_title="RUL"))
-        st.plotly_chart(fig, use_container_width=True, theme="streamlit", config=PLOTLY_CONFIG)
+        st.plotly_chart(fig, width='stretch', theme="streamlit", config=PLOTLY_CONFIG)
