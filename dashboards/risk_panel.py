@@ -1,4 +1,4 @@
-"""Painel Risk — incerteza + maintenance intelligence + alertas WhatsApp."""
+"""Painel Risk — incerteza + maintenance intelligence + alertas."""
 from __future__ import annotations
 
 import numpy as np
@@ -11,10 +11,10 @@ from uncertainty_risk_experiment import run_uncertainty_risk_experiment
 
 def render_risk_tab(*, noise_std: float, THEME: dict, plotly_layout, methodology_block, PLOTLY_CONFIG: dict) -> None:
     methodology_block(
-        info="Maintenance intelligence: RUL uncertainty → risk level → alertas WhatsApp/Webhook.",
-        method="Métodos: RF quantiles, residual, GBM quantile, Monte Carlo. Alertas: Webhook + WhatsApp.",
+        info="Maintenance intelligence: RUL uncertainty → risk → Webhook/WhatsApp Cloud API.",
+        method="RF quantiles, residual, GBM quantile, Monte Carlo. Alertas: Webhook + Meta WhatsApp.",
         interpretation="LOW/MEDIUM/HIGH/CRITICAL são parâmetros de engenharia, não normas aeronáuticas.",
-        limitations="Dados sintéticos/C-MAPSS. CallMeBot é canal pessoal; Cloud API exige app Meta.",
+        limitations="Dados sintéticos/C-MAPSS. Credenciais só via secrets/env.",
         label="Sobre este painel",
     )
 
@@ -111,19 +111,20 @@ def render_risk_tab(*, noise_std: float, THEME: dict, plotly_layout, methodology
 
 
 def render_alerts_section() -> None:
-    """Configuração e disparo de alertas Webhook / WhatsApp para risco CRITICAL/HIGH."""
+    """Alertas Webhook / WhatsApp Cloud API (CRITICAL/HIGH)."""
     st.markdown("---")
     st.subheader("Alertas em tempo real")
     st.caption(
-        "Dispara quando o risco é **CRITICAL** ou **HIGH**. "
-        "Canais: **Webhook** e **WhatsApp** (CallMeBot ou Meta Cloud API)."
+        "Canais: **Webhook** e **WhatsApp Cloud API** (Meta). "
+        "Secrets: `AEROQUANT_WEBHOOK_URL`, `AEROQUANT_WA_TOKEN`, "
+        "`AEROQUANT_WA_PHONE_NUMBER_ID`, `AEROQUANT_WHATSAPP_PHONE`."
     )
 
     from aeroquant.alerts import AlertDispatcher, AlertEvent
     from aeroquant.risk.assessment import RiskAssessment
 
-    cfg1, cfg2 = st.columns(2)
-    with cfg1:
+    c1, c2 = st.columns(2)
+    with c1:
         webhook_url = st.text_input(
             "Webhook URL",
             value=st.session_state.get("alert_webhook", ""),
@@ -132,47 +133,26 @@ def render_alerts_section() -> None:
         )
         st.session_state["alert_webhook"] = webhook_url
         wa_phone = st.text_input(
-            "WhatsApp (DDI+número, só dígitos)",
+            "WhatsApp destino (DDI+número)",
             value=st.session_state.get("alert_wa_phone", ""),
             placeholder="5511999999999",
             key="alert_wa_phone_in",
         )
         st.session_state["alert_wa_phone"] = wa_phone
-    with cfg2:
-        wa_provider = st.selectbox(
-            "Provedor WhatsApp",
-            options=["callmebot", "cloud_api"],
-            format_func=lambda x: {
-                "callmebot": "CallMeBot (rápido / pessoal)",
-                "cloud_api": "Meta Cloud API (oficial)",
-            }[x],
-            key="alert_wa_provider",
+    with c2:
+        wa_token = st.text_input(
+            "Meta Access Token",
+            value=st.session_state.get("alert_wa_token", ""),
+            type="password",
+            key="alert_wa_token_in",
         )
-        if wa_provider == "callmebot":
-            wa_apikey = st.text_input(
-                "CallMeBot API key",
-                value=st.session_state.get("alert_wa_apikey", ""),
-                type="password",
-                key="alert_wa_apikey_in",
-            )
-            st.session_state["alert_wa_apikey"] = wa_apikey
-            wa_token = ""
-            wa_phone_id = ""
-        else:
-            wa_apikey = ""
-            wa_token = st.text_input(
-                "Meta Access Token",
-                value=st.session_state.get("alert_wa_token", ""),
-                type="password",
-                key="alert_wa_token_in",
-            )
-            st.session_state["alert_wa_token"] = wa_token
-            wa_phone_id = st.text_input(
-                "Phone Number ID",
-                value=st.session_state.get("alert_wa_phone_id", ""),
-                key="alert_wa_phone_id_in",
-            )
-            st.session_state["alert_wa_phone_id"] = wa_phone_id
+        st.session_state["alert_wa_token"] = wa_token
+        wa_phone_id = st.text_input(
+            "Phone Number ID",
+            value=st.session_state.get("alert_wa_phone_id", ""),
+            key="alert_wa_phone_id_in",
+        )
+        st.session_state["alert_wa_phone_id"] = wa_phone_id
 
     triggers = st.multiselect(
         "Níveis que disparam alerta",
@@ -184,9 +164,8 @@ def render_alerts_section() -> None:
     dispatcher = AlertDispatcher.from_env(
         webhook_url=webhook_url or None,
         whatsapp_phone=wa_phone or None,
-        whatsapp_apikey=(wa_apikey or None) if wa_provider == "callmebot" else None,
-        wa_token=(wa_token or None) if wa_provider == "cloud_api" else None,
-        wa_phone_number_id=(wa_phone_id or None) if wa_provider == "cloud_api" else None,
+        wa_token=wa_token or None,
+        wa_phone_number_id=wa_phone_id or None,
         trigger_levels=frozenset(triggers) if triggers else frozenset({"CRITICAL", "HIGH"}),
     )
 
@@ -206,7 +185,7 @@ def render_alerts_section() -> None:
         event = AlertEvent(
             level="CRITICAL",
             title="Teste AeroQuant Lab",
-            message="Alerta de teste — módulo WhatsApp operacional.",
+            message="Alerta de teste — WhatsApp Cloud / Webhook.",
             unit_id="test-unit-0001",
             expected_rul=12.0,
             p10=5.0,
@@ -215,36 +194,26 @@ def render_alerts_section() -> None:
             maintenance_threshold=30.0,
             prob_below_threshold=0.85,
         )
-        results = dispatcher.dispatch(event, force=True)
-        for r in results:
-            if r.ok:
-                st.success(f"{r.channel}: OK ({r.status_code or '—'})")
-            else:
-                st.warning(f"{r.channel}: {r.detail}")
+        for r in dispatcher.dispatch(event, force=True):
+            (st.success if r.ok else st.warning)(
+                f"{r.channel}: {('OK ' + str(r.status_code or '—')) if r.ok else r.detail}"
+            )
 
     if risk_btn and "risk_result" in st.session_state:
         risk: RiskAssessment = st.session_state["risk_result"].risk
-        results = dispatcher.dispatch_risk(risk, unit_id="fleet-eval", force=False)
-        for r in results:
-            if r.ok:
-                st.success(f"{r.channel}: {r.detail if r.channel == 'policy' else 'enviado'}")
-            else:
-                st.warning(f"{r.channel}: {r.detail}")
+        for r in dispatcher.dispatch_risk(risk, unit_id="fleet-eval", force=False):
+            (st.success if r.ok else st.warning)(
+                f"{r.channel}: {r.detail if r.channel == 'policy' else ('enviado' if r.ok else r.detail)}"
+            )
 
-    with st.expander("Como configurar WhatsApp"):
+    with st.expander("Configuração WhatsApp Cloud API"):
         st.markdown(
             """
-**CallMeBot (mais simples)**  
-1. No WhatsApp, adicione o contato **+34 644 59 71 67**  
-2. Envie: `I allow callmebot to send me messages`  
-3. Receba o **apikey**  
-4. Preencha telefone (`5511…`) e apikey acima  
+1. [Meta for Developers](https://developers.facebook.com/) → app com produto **WhatsApp**
+2. Copie **Phone number ID** e **Access token**
+3. Destino em E.164 só dígitos (`5511…`)
+4. Preferir secrets do Streamlit Cloud em vez de colar na UI
 
-**Meta Cloud API (oficial)**  
-1. Crie app em [developers.facebook.com](https://developers.facebook.com/) → WhatsApp  
-2. Use o *Phone number ID* e o token  
-3. Destino deve estar na janela de 24h / template aprovado  
-
-**Webhook:** `POST` JSON `{"text": "...", "alert": { ... }}`.
+**Webhook:** HTTPS + URL secreta; não commit no Git.
 """
         )
