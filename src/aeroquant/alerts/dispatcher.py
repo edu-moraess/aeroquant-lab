@@ -1,7 +1,12 @@
 """Dispatcher: transforma RiskAssessment → AlertEvent e envia aos canais."""
 from __future__ import annotations
 
-from aeroquant.alerts.channels import AlertChannel, TelegramChannel, WebhookChannel
+from aeroquant.alerts.channels import (
+    AlertChannel,
+    WebhookChannel,
+    WhatsAppCallMeBotChannel,
+    WhatsAppCloudAPIChannel,
+)
 from aeroquant.alerts.domain import AlertDispatchResult, AlertEvent
 from aeroquant.risk.assessment import RiskAssessment
 
@@ -47,17 +52,29 @@ class AlertDispatcher:
         cls,
         *,
         webhook_url: str | None = None,
-        telegram_token: str | None = None,
-        telegram_chat_id: str | None = None,
+        whatsapp_phone: str | None = None,
+        whatsapp_apikey: str | None = None,
+        wa_token: str | None = None,
+        wa_phone_number_id: str | None = None,
         trigger_levels: frozenset[str] | None = None,
     ) -> AlertDispatcher:
         channels: list[AlertChannel] = []
         wh = WebhookChannel(url=webhook_url)
         if wh.url:
             channels.append(wh)
-        tg = TelegramChannel(bot_token=telegram_token, chat_id=telegram_chat_id)
-        if tg.bot_token and tg.chat_id:
-            channels.append(tg)
+
+        cmb = WhatsAppCallMeBotChannel(phone=whatsapp_phone, apikey=whatsapp_apikey)
+        if cmb.phone and cmb.apikey:
+            channels.append(cmb)
+        else:
+            cloud = WhatsAppCloudAPIChannel(
+                token=wa_token,
+                phone_number_id=wa_phone_number_id,
+                to_phone=whatsapp_phone,
+            )
+            if cloud.token and cloud.phone_number_id and cloud.to_phone:
+                channels.append(cloud)
+
         return cls(channels=channels, trigger_levels=trigger_levels)
 
     def should_dispatch(self, event: AlertEvent) -> bool:
@@ -82,7 +99,7 @@ class AlertDispatcher:
                 AlertDispatchResult(
                     channel="none",
                     ok=False,
-                    detail="Nenhum canal configurado (webhook e/ou Telegram).",
+                    detail="Nenhum canal configurado (Webhook e/ou WhatsApp).",
                 )
             ]
         return [ch.send(event) for ch in self.channels]

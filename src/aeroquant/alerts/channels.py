@@ -1,9 +1,10 @@
-"""Canais de notificação: Webhook HTTP e Telegram Bot API."""
+"""Canais de notificação: Webhook HTTP e WhatsApp (CallMeBot / Meta Cloud API)."""
 from __future__ import annotations
 
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Protocol
 
@@ -60,53 +61,117 @@ class WebhookChannel:
             return AlertDispatchResult(channel=self.name, ok=False, detail=str(e))
 
 
-class TelegramChannel:
-    """Envia mensagem via Bot API (sendMessage)."""
+class WhatsAppCallMeBotChannel:
+    """WhatsApp via CallMeBot (setup simples para demo / uso pessoal)."""
 
-    name = "telegram"
+    name = "whatsapp_callmebot"
 
     def __init__(
         self,
-        bot_token: str | None = None,
-        chat_id: str | None = None,
-        timeout: float = 12.0,
+        phone: str | None = None,
+        apikey: str | None = None,
+        timeout: float = 15.0,
     ) -> None:
-        self.bot_token = (bot_token or os.environ.get("AEROQUANT_TELEGRAM_BOT_TOKEN") or "").strip()
-        self.chat_id = (chat_id or os.environ.get("AEROQUANT_TELEGRAM_CHAT_ID") or "").strip()
+        self.phone = _digits_only(phone or os.environ.get("AEROQUANT_WHATSAPP_PHONE") or "")
+        self.apikey = (apikey or os.environ.get("AEROQUANT_WHATSAPP_APIKEY") or "").strip()
         self.timeout = timeout
 
     def send(self, event: AlertEvent) -> AlertDispatchResult:
-        if not self.bot_token or not self.chat_id:
+        if not self.phone or not self.apikey:
             return AlertDispatchResult(
                 channel=self.name,
                 ok=False,
-                detail="Telegram não configurado (AEROQUANT_TELEGRAM_BOT_TOKEN / AEROQUANT_TELEGRAM_CHAT_ID).",
+                detail="WhatsApp CallMeBot não configurado (phone + apikey).",
             )
-        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+        text = event.plain_text()
+        qs = urllib.parse.urlencode(
+            {"phone": self.phone, "text": text, "apikey": self.apikey}
+        )
+        url = f"https://api.callmebot.com/whatsapp.php?{qs}"
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "AeroQuantLab-Alerts/1.0"},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                body = resp.read()[:500].decode("utf-8", errors="replace")
+                ok = 200 <= resp.status < 300
+                return AlertDispatchResult(
+                    channel=self.name, ok=ok, detail=body or f"HTTP {resp.status}", status_code=resp.status
+                )
+        except urllib.error.HTTPError as e:
+            err = e.read()[:400].decode("utf-8", errors="replace") if e.fp else str(e)
+            return AlertDispatchResult(
+                channel=self.name, ok=False, detail=err, status_code=e.code
+            )
+        except Exception as e:  # noqa: BLE001
+            return AlertDispatchResult(channel=self.name, ok=False, detail=str(e))
+
+
+class WhatsAppCloudAPIChannel:
+    """WhatsApp oficial via Meta Cloud API."""
+
+    name = "whatsapp_cloud"
+
+    def __init__(
+        self,
+        token: str | None = None,
+        phone_number_id: str | None = None,
+        to_phone: str | None = None,
+        timeout: float = 15.0,
+    ) -> None:
+        self.token = (token or os.environ.get("AEROQUANT_WA_TOKEN") or "").strip()
+        self.phone_number_id = (
+            phone_number_id or os.environ.get("AEROQUANT_WA_PHONE_NUMBER_ID") or ""
+        ).strip()
+        self.to_phone = _digits_only(
+            to_phone or os.environ.get("AEROQUANT_WHATSAPP_PHONE") or ""
+        )
+        self.timeout = timeout
+
+    def send(self, event: AlertEvent) -> AlertDispatchResult:
+        if not self.token or not self.phone_number_id or not self.to_phone:
+            return AlertDispatchResult(
+                channel=self.name,
+                ok=False,
+                detail="WhatsApp Cloud API não configurada (token + phone_number_id + to).",
+            )
+        url = f"https://graph.facebook.com/v19.0/{self.phone_number_id}/messages"
         payload = {
-            "chat_id": self.chat_id,
-            "text": event.telegram_html(),
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
+            "messaging_product": "whatsapp",
+            "to": self.to_phone,
+            "type": "text",
+            "text": {"preview_url": False, "body": event.plain_text()[:4096]},
         }
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json", "User-Agent": "AeroQuantLab-Alerts/1.0"},
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.token}",
+                "User-Agent": "AeroQuantLab-Alerts/1.0",
+            },
             method="POST",
         )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = resp.read()[:800].decode("utf-8", errors="replace")
-                ok = 200 <= resp.status < 300
                 return AlertDispatchResult(
-                    channel=self.name, ok=ok, detail=body, status_code=resp.status
+                    channel=self.name,
+                    ok=200 <= resp.status < 300,
+                    detail=body,
+                    status_code=resp.status,
                 )
         except urllib.error.HTTPError as e:
-            err_body = e.read()[:400].decode("utf-8", errors="replace") if e.fp else str(e)
+            err = e.read()[:400].decode("utf-8", errors="replace") if e.fp else str(e)
             return AlertDispatchResult(
-                channel=self.name, ok=False, detail=err_body, status_code=e.code
+                channel=self.name, ok=False, detail=err, status_code=e.code
             )
         except Exception as e:  # noqa: BLE001
             return AlertDispatchResult(channel=self.name, ok=False, detail=str(e))
+
+
+def _digits_only(value: str) -> str:
+    return "".join(c for c in (value or "") if c.isdigit())
