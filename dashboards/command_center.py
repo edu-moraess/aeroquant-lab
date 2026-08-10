@@ -1,4 +1,4 @@
-"""01 — COMMAND CENTER: visão de frota integrada."""
+"""01 — COMMAND CENTER: frota + risk/decision integrados."""
 from __future__ import annotations
 
 import numpy as np
@@ -9,16 +9,37 @@ import streamlit as st
 
 def render_command_center(*, THEME: dict, plotly_layout, PLOTLY_CONFIG: dict) -> None:
     st.markdown("### Command Center")
-    st.caption("Aircraft Health Monitoring · frota · decision support")
+    st.caption("Health · RUL · Risk · Decision — módulo Risk separado removido")
 
     snapshots = st.session_state.get("fleet_snapshots")
+
+    if "ml_result" in st.session_state and not snapshots:
+        st.info("Há um treino em memória. Use-o para popular a frota.")
+        if st.button("Usar último treino no Command Center", key="cc_from_ml"):
+            try:
+                from fleet_bridge import snapshots_from_predictions
+                res = st.session_state["ml_result"]
+                br = getattr(res, "bias_report", None)
+                uids = getattr(res, "test_unit_ids", None)
+                if uids is None:
+                    uids = np.array([f"u{i}" for i in range(len(res.test_true))])
+                st.session_state["fleet_snapshots"] = snapshots_from_predictions(
+                    unit_ids=uids,
+                    y_true=res.test_true,
+                    y_pred=getattr(res, "y_pred_raw", res.test_pred_best),
+                    p10=getattr(res, "p10", None),
+                    p90=getattr(res, "p90", None),
+                    feature_df=getattr(res, "X_test", None),
+                    late_failure_risk=float(getattr(br, "late_failure_risk", 0.5) if br else 0.5),
+                )
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+
     if not snapshots:
-        st.info(
-            "Gere a frota demo abaixo ou execute Model Lab para popular o Command Center. "
-            "Pipeline: Health → RUL → Monte Carlo → Risk → Decision."
-        )
+        st.info("Gere frota demo ou treine no Model Lab (auto-envia ao Command Center).")
         if st.button("Gerar frota demo (Digital Twin)", type="primary", key="cc_demo"):
-            with st.spinner("Simulando frota e pipeline integrado..."):
+            with st.spinner("Simulando frota..."):
                 st.session_state["fleet_snapshots"] = _demo_fleet()
                 st.rerun()
         return
@@ -77,7 +98,7 @@ def render_command_center(*, THEME: dict, plotly_layout, PLOTLY_CONFIG: dict) ->
         fig.update_layout(**plotly_layout(THEME, height=280, x_title="Expected RUL", y_title="Risk Score"))
         st.plotly_chart(fig, width="stretch", theme="streamlit", config=PLOTLY_CONFIG)
 
-    st.markdown("#### Aircraft Detail")
+    st.markdown("#### Aircraft Detail · Decision Support")
     sel = st.selectbox("Unit", [u.unit_id for u in ranked], key="cc_unit")
     u = next(x for x in units if x.unit_id == sel)
     d1, d2, d3, d4 = st.columns(4)
