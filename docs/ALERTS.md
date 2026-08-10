@@ -1,19 +1,10 @@
-# Alertas em tempo real (Webhook / WhatsApp)
+# Alertas (Webhook / WhatsApp Cloud API)
 
-Módulo: `aeroquant.alerts` — **Telegram removido**.
+CallMeBot e Telegram **omitidos** por segurança.
 
-## Canais
+| Canal | Env |
+|-------|-----|
+| Webhook | `AEROQUANT_WEBHOOK_URL` |
+| WhatsApp Cloud | `AEROQUANT_WA_TOKEN`, `AEROQUANT_WA_PHONE_NUMBER_ID`, `AEROQUANT_WHATSAPP_PHONE` |
 
-| Canal | Configuração | Uso |
-|-------|--------------|-----|
-| Webhook | `AEROQUANT_WEBHOOK_URL` | POST JSON / Slack |
-| WhatsApp CallMeBot | `AEROQUANT_WHATSAPP_PHONE` + `AEROQUANT_WHATSAPP_APIKEY` | Demo / pessoal |
-| WhatsApp Cloud API | `AEROQUANT_WA_TOKEN` + `AEROQUANT_WA_PHONE_NUMBER_ID` + phone | Produção Meta |
-
-## Política
-
-Só **CRITICAL** e **HIGH** disparam por padrão (ajustável na UI).
-
-## UI
-
-Aba **Risk** → **Alertas em tempo real**.
+Credenciais apenas em secrets / env — nunca no repositório.

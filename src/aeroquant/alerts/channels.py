@@ -1,10 +1,9 @@
-"""Canais de notificação: Webhook HTTP e WhatsApp (CallMeBot / Meta Cloud API)."""
+"""Canais: Webhook HTTP e WhatsApp Meta Cloud API (sem CallMeBot/Telegram)."""
 from __future__ import annotations
 
 import json
 import os
 import urllib.error
-import urllib.parse
 import urllib.request
 from typing import Protocol
 
@@ -18,8 +17,6 @@ class AlertChannel(Protocol):
 
 
 class WebhookChannel:
-    """POST JSON para URL configurável (Slack-compatible / genérico)."""
-
     name = "webhook"
 
     def __init__(self, url: str | None = None, timeout: float = 12.0) -> None:
@@ -29,8 +26,7 @@ class WebhookChannel:
     def send(self, event: AlertEvent) -> AlertDispatchResult:
         if not self.url:
             return AlertDispatchResult(
-                channel=self.name,
-                ok=False,
+                channel=self.name, ok=False,
                 detail="Webhook URL não configurada (AEROQUANT_WEBHOOK_URL).",
             )
         payload = {
@@ -39,8 +35,7 @@ class WebhookChannel:
         }
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
-            self.url,
-            data=data,
+            self.url, data=data,
             headers={"Content-Type": "application/json", "User-Agent": "AeroQuantLab-Alerts/1.0"},
             method="POST",
         )
@@ -48,70 +43,16 @@ class WebhookChannel:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = resp.read()[:500].decode("utf-8", errors="replace")
                 return AlertDispatchResult(
-                    channel=self.name,
-                    ok=200 <= resp.status < 300,
-                    detail=body or f"HTTP {resp.status}",
-                    status_code=resp.status,
+                    channel=self.name, ok=200 <= resp.status < 300,
+                    detail=body or f"HTTP {resp.status}", status_code=resp.status,
                 )
         except urllib.error.HTTPError as e:
-            return AlertDispatchResult(
-                channel=self.name, ok=False, detail=str(e), status_code=e.code
-            )
-        except Exception as e:  # noqa: BLE001
-            return AlertDispatchResult(channel=self.name, ok=False, detail=str(e))
-
-
-class WhatsAppCallMeBotChannel:
-    """WhatsApp via CallMeBot (setup simples para demo / uso pessoal)."""
-
-    name = "whatsapp_callmebot"
-
-    def __init__(
-        self,
-        phone: str | None = None,
-        apikey: str | None = None,
-        timeout: float = 15.0,
-    ) -> None:
-        self.phone = _digits_only(phone or os.environ.get("AEROQUANT_WHATSAPP_PHONE") or "")
-        self.apikey = (apikey or os.environ.get("AEROQUANT_WHATSAPP_APIKEY") or "").strip()
-        self.timeout = timeout
-
-    def send(self, event: AlertEvent) -> AlertDispatchResult:
-        if not self.phone or not self.apikey:
-            return AlertDispatchResult(
-                channel=self.name,
-                ok=False,
-                detail="WhatsApp CallMeBot não configurado (phone + apikey).",
-            )
-        text = event.plain_text()
-        qs = urllib.parse.urlencode(
-            {"phone": self.phone, "text": text, "apikey": self.apikey}
-        )
-        url = f"https://api.callmebot.com/whatsapp.php?{qs}"
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "AeroQuantLab-Alerts/1.0"},
-            method="GET",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                body = resp.read()[:500].decode("utf-8", errors="replace")
-                ok = 200 <= resp.status < 300
-                return AlertDispatchResult(
-                    channel=self.name, ok=ok, detail=body or f"HTTP {resp.status}", status_code=resp.status
-                )
-        except urllib.error.HTTPError as e:
-            err = e.read()[:400].decode("utf-8", errors="replace") if e.fp else str(e)
-            return AlertDispatchResult(
-                channel=self.name, ok=False, detail=err, status_code=e.code
-            )
+            return AlertDispatchResult(channel=self.name, ok=False, detail=str(e), status_code=e.code)
         except Exception as e:  # noqa: BLE001
             return AlertDispatchResult(channel=self.name, ok=False, detail=str(e))
 
 
 class WhatsAppCloudAPIChannel:
-    """WhatsApp oficial via Meta Cloud API."""
-
     name = "whatsapp_cloud"
 
     def __init__(
@@ -125,16 +66,14 @@ class WhatsAppCloudAPIChannel:
         self.phone_number_id = (
             phone_number_id or os.environ.get("AEROQUANT_WA_PHONE_NUMBER_ID") or ""
         ).strip()
-        self.to_phone = _digits_only(
-            to_phone or os.environ.get("AEROQUANT_WHATSAPP_PHONE") or ""
-        )
+        raw = to_phone or os.environ.get("AEROQUANT_WHATSAPP_PHONE") or ""
+        self.to_phone = "".join(c for c in raw if c.isdigit())
         self.timeout = timeout
 
     def send(self, event: AlertEvent) -> AlertDispatchResult:
         if not self.token or not self.phone_number_id or not self.to_phone:
             return AlertDispatchResult(
-                channel=self.name,
-                ok=False,
+                channel=self.name, ok=False,
                 detail="WhatsApp Cloud API não configurada (token + phone_number_id + to).",
             )
         url = f"https://graph.facebook.com/v19.0/{self.phone_number_id}/messages"
@@ -146,8 +85,7 @@ class WhatsAppCloudAPIChannel:
         }
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
-            url,
-            data=data,
+            url, data=data,
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.token}",
@@ -159,19 +97,11 @@ class WhatsAppCloudAPIChannel:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = resp.read()[:800].decode("utf-8", errors="replace")
                 return AlertDispatchResult(
-                    channel=self.name,
-                    ok=200 <= resp.status < 300,
-                    detail=body,
-                    status_code=resp.status,
+                    channel=self.name, ok=200 <= resp.status < 300,
+                    detail=body, status_code=resp.status,
                 )
         except urllib.error.HTTPError as e:
             err = e.read()[:400].decode("utf-8", errors="replace") if e.fp else str(e)
-            return AlertDispatchResult(
-                channel=self.name, ok=False, detail=err, status_code=e.code
-            )
+            return AlertDispatchResult(channel=self.name, ok=False, detail=err, status_code=e.code)
         except Exception as e:  # noqa: BLE001
             return AlertDispatchResult(channel=self.name, ok=False, detail=str(e))
-
-
-def _digits_only(value: str) -> str:
-    return "".join(c for c in (value or "") if c.isdigit())
