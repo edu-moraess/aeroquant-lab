@@ -1,27 +1,19 @@
-# Alertas em tempo real (Webhook / Telegram)
+# Alertas em tempo real (Webhook / WhatsApp)
 
-Módulo: `aeroquant.alerts`
+Módulo: `aeroquant.alerts` — **Telegram removido**.
 
 ## Canais
 
-| Canal | Env / UI | Payload |
-|-------|----------|--------|
-| Webhook | `AEROQUANT_WEBHOOK_URL` | POST JSON `{text, alert}` |
-| Telegram | `AEROQUANT_TELEGRAM_BOT_TOKEN` + `AEROQUANT_TELEGRAM_CHAT_ID` | Bot API `sendMessage` HTML |
+| Canal | Configuração | Uso |
+|-------|--------------|-----|
+| Webhook | `AEROQUANT_WEBHOOK_URL` | POST JSON / Slack |
+| WhatsApp CallMeBot | `AEROQUANT_WHATSAPP_PHONE` + `AEROQUANT_WHATSAPP_APIKEY` | Demo / pessoal |
+| WhatsApp Cloud API | `AEROQUANT_WA_TOKEN` + `AEROQUANT_WA_PHONE_NUMBER_ID` + phone | Produção Meta |
 
 ## Política
 
-Por padrão só **CRITICAL** e **HIGH** disparam envio (configurável na UI Risk).
+Só **CRITICAL** e **HIGH** disparam por padrão (ajustável na UI).
 
-## Integração
+## UI
 
-```python
-from aeroquant.alerts import AlertDispatcher
-from aeroquant.risk.assessment import assess_risk
-
-risk = assess_risk(point_estimate=12.0, maintenance_threshold=30.0)
-dispatcher = AlertDispatcher.from_env()
-results = dispatcher.dispatch_risk(risk, unit_id="eng-0001")
-```
-
-UI: aba **Risk** → seção **Alertas em tempo real**.
+Aba **Risk** → **Alertas em tempo real**.

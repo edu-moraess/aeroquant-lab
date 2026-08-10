@@ -10,7 +10,7 @@ from typing import Any
 class AlertEvent:
     """Evento de alerta emitido pelo sistema de health monitoring."""
 
-    level: str  # CRITICAL | HIGH | MEDIUM | LOW | INFO
+    level: str
     title: str
     message: str
     unit_id: str = "fleet"
@@ -27,28 +27,21 @@ class AlertEvent:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
-    def telegram_html(self) -> str:
-        emoji = {
-            "CRITICAL": "🚨",
-            "HIGH": "⚠️",
-            "MEDIUM": "🟠",
-            "LOW": "🟢",
-            "INFO": "ℹ️",
-        }.get(self.level, "📢")
+    def plain_text(self) -> str:
         lines = [
-            f"{emoji} <b>{self.level}</b> — {self.title}",
-            f"<code>{self.unit_id}</code>",
+            f"[{self.level}] {self.title}",
+            f"Unit: {self.unit_id}",
             self.message,
         ]
         if self.expected_rul is not None:
-            lines.append(f"RUL esperado: <b>{self.expected_rul:.1f}</b> ciclos")
+            lines.append(f"RUL esperado: {self.expected_rul:.1f} ciclos")
         if self.p10 is not None and self.p90 is not None:
-            lines.append(f"P10–P90: {self.p10:.0f} – {self.p90:.0f}")
+            lines.append(f"P10-P90: {self.p10:.0f} - {self.p90:.0f}")
         if self.prob_below_threshold is not None and self.maintenance_threshold is not None:
             lines.append(
-                f"P(RUL &lt; {self.maintenance_threshold:.0f}) = {100 * self.prob_below_threshold:.0f}%"
+                f"P(RUL < {self.maintenance_threshold:.0f}) = {100 * self.prob_below_threshold:.0f}%"
             )
-        lines.append(f"<i>{self.source} · {self.timestamp_utc}</i>")
+        lines.append(f"{self.source} | {self.timestamp_utc}")
         return "\n".join(lines)
 
 
