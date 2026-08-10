@@ -1,4 +1,4 @@
-"""Treino RUL com NASA C-MAPSS real (FD001–FD004), inclusive multi-regime."""
+"""Treino RUL com NASA C-MAPSS — bias correction + quantiles + calibration."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,6 +12,9 @@ from aeroquant.ml.infrastructure.evaluation.ranking import RankingPolicy
 from aeroquant.ml.infrastructure.evaluation.residuals import analyze_residuals
 from aeroquant.ml.infrastructure.trainers.sklearn_trainers import (
     LinearRegressionTrainer, MLPTrainer, RandomForestTrainer,
+)
+from aeroquant.ml.infrastructure.trainers.quantile_trainers import (
+    AsymmetricQuantileGBMTrainer, RandomForestQuantileTrainer,
 )
 from aeroquant.sensor_data.etl.pipeline import apply_normalize, engineer_features, fit_normalize_stats
 from aeroquant.sensor_data.infrastructure.adapters.cmapss_adapter import (
@@ -43,14 +46,21 @@ class CMAPSSExperimentResult:
     feature_importance: object = None
     trained_model: object = None
     X_test: object = None
+    test_unit_ids: object = None
+    y_pred_raw: object = None
+    y_pred_corrected: object = None
+    p10: object = None
+    p90: object = None
+    bias_report: object = None
+    calibration_report: object = None
+    failure_regions: object = None
+    bias_value: float = 0.0
 
 
 def ensure_cmapss_data() -> None:
-    """Garante C-MAPSS em data/external/ (baixa se necessário)."""
     if (_EXTERNAL / "train_FD001.txt").exists():
         return
-    import subprocess
-    import sys
+    import subprocess, sys
     script = _ROOT / "scripts" / "download_cmapss.py"
     if not script.exists():
         raise FileNotFoundError(f"Falta {script}")
@@ -78,10 +88,7 @@ def run_cmapss_experiment(
 ) -> CMAPSSExperimentResult:
     ensure_cmapss_data()
     if not cmapss_available(subset):
-        raise FileNotFoundError(
-            f"Arquivos C-MAPSS {subset} não encontrados em {_EXTERNAL}. "
-            "Execute: python scripts/download_cmapss.py"
-        )
+        raise FileNotFoundError(f"Arquivos C-MAPSS {subset} não encontrados em {_EXTERNAL}.")
 
     schema = build_cmapss_like_schema()
     adapter = CMAPSSAdapter()
@@ -109,6 +116,8 @@ def run_cmapss_experiment(
     trainers = {
         "Linear Regression": LinearRegressionTrainer(),
         "Random Forest": RandomForestTrainer(n_estimators=n_estimators, max_depth=12, seed=seed),
+        "RF Quantile": RandomForestQuantileTrainer(n_estimators=n_estimators, max_depth=12, seed=seed),
+        "GBM Quantile asym": AsymmetricQuantileGBMTrainer(n_estimators=min(120, n_estimators), seed=seed),
         "MLP": MLPTrainer(hidden_layer_sizes=(64, 32), max_iter=200, seed=seed),
     }
     rows, preds = [], {}
@@ -121,7 +130,22 @@ def run_cmapss_experiment(
     metrics_table = pd.DataFrame(rows)
     ranked = RankingPolicy().rank(metrics_table)
     best = str(ranked.iloc[0]["Model"])
-    y_pred = preds[best]
+    y_pred_raw = preds[best]
+
+    from aeroquant.prognostics.bias_correction import (
+        apply_bias_correction, compute_bias_report, failure_region_metrics, fit_bias_correction,
+    )
+    from aeroquant.prognostics.calibration import evaluate_interval_calibration
+
+    bias = fit_bias_correction(y_true, y_pred_raw)
+    resid = y_pred_raw - y_true
+    resid = resid[np.isfinite(resid)]
+    std = float(np.std(resid)) if len(resid) > 2 else 10.0
+    corr = apply_bias_correction(y_pred_raw, bias, residual_std=std)
+    y_pred = corr.point
+    bias_report = compute_bias_report(y_true, y_pred_raw)
+    cal = evaluate_interval_calibration(y_true, corr.p10, corr.p90)
+    regions = failure_region_metrics(y_true, y_pred_raw)
 
     return CMAPSSExperimentResult(
         subset=subset, metrics_table=metrics_table, ranked_table=ranked, best_model_name=best,
@@ -131,10 +155,14 @@ def run_cmapss_experiment(
         n_train_units=int(train_df["unit_id"].nunique()),
         n_test_units=int(test_df["unit_id"].nunique()),
         n_train_rows=len(train_df), n_test_rows=len(test_df), n_features=len(feature_cols),
+        test_unit_ids=test_df["unit_id"].to_numpy(),
+        y_pred_raw=y_pred_raw, y_pred_corrected=y_pred,
+        p10=corr.p10, p90=corr.p90, bias_report=bias_report,
+        calibration_report=cal, failure_regions=regions, bias_value=bias,
+        X_test=X_test,
         protocol_note=(
             f"NASA C-MAPSS {subset} ({n_regimes} regime(s)). "
-            "Train=run-to-failure; Test=parcial + RUL file. "
-            "Op-condition KMeans fit só no treino. Normalize fit só no treino. "
-            "C-MAPSS é simulação NASA (benchmark), não telemetria comercial."
+            "Bias correction: y_corr = y_hat - bias. Quantile models included. "
+            "Normalize/op-condition fit só no treino."
         ),
     )
